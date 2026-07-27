@@ -32,6 +32,14 @@ const Maquina = sequelize.define(
         key: "id",
       },
     },
+    statusOperacao: {
+      type: DataTypes.STRING(30),
+      allowNull: false,
+      defaultValue: "EM_OPERACAO",
+      field: "status_operacao",
+      comment:
+        "Status operacional: EM_OPERACAO, EM_MANUTENCAO, PRONTA_PARA_SAIDA, PARADA ou EM_TRANSPORTE",
+    },
     capacidadePadrao: {
       type: DataTypes.INTEGER,
       allowNull: false,
@@ -58,6 +66,12 @@ const Maquina = sequelize.define(
       allowNull: true,
       field: "jogadas_boas_por_pelucia",
       comment: "Quantidade ideal de jogadas para sair uma pelúcia",
+    },
+    mediaSaidaEsperada: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: true,
+      field: "media_saida_esperada",
+      comment: "Média esperada de saída de pelúcias por movimentação",
     },
     forcaForte: {
       type: DataTypes.INTEGER,
@@ -121,4 +135,3 @@ const Maquina = sequelize.define(
 );
 
 export default Maquina;
-

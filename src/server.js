@@ -124,6 +124,7 @@ const startServer = async () => {
 
     const queryInterface = sequelize.getQueryInterface();
     const colunasMaquinas = await queryInterface.describeTable("maquinas");
+    const colunasLojas = await queryInterface.describeTable("lojas");
 
     // Criar admin padrão se não existir
     if (!colunasMaquinas.jogadas_boas_por_pelucia) {
@@ -136,6 +137,58 @@ const startServer = async () => {
       console.log(
         "âÅ“… Coluna de jogadas boas por pelúcia adicionada às máquinas!",
       );
+    }
+
+    {
+      const { DataTypes } = await import("sequelize");
+      const colunasNovasMaquinas = [
+        [
+          "status_operacao",
+          {
+            type: DataTypes.STRING(30),
+            allowNull: false,
+            defaultValue: "EM_OPERACAO",
+          },
+        ],
+        [
+          "media_saida_esperada",
+          { type: DataTypes.DECIMAL(10, 2), allowNull: true },
+        ],
+      ];
+
+      for (const [nomeColuna, definicao] of colunasNovasMaquinas) {
+        if (!colunasMaquinas[nomeColuna]) {
+          await queryInterface.addColumn("maquinas", nomeColuna, definicao);
+          console.log(`✅ Coluna ${nomeColuna} adicionada às máquinas!`);
+        }
+      }
+    }
+
+    {
+      const { DataTypes } = await import("sequelize");
+      const colunasNovasLojas = [
+        [
+          "status_operacao",
+          {
+            type: DataTypes.STRING(30),
+            allowNull: false,
+            defaultValue: "ATIVA",
+          },
+        ],
+        ["data_inicio", { type: DataTypes.DATEONLY, allowNull: true }],
+        ["observacoes", { type: DataTypes.TEXT, allowNull: true }],
+        [
+          "data_vencimento_extintor",
+          { type: DataTypes.DATEONLY, allowNull: true },
+        ],
+      ];
+
+      for (const [nomeColuna, definicao] of colunasNovasLojas) {
+        if (!colunasLojas[nomeColuna]) {
+          await queryInterface.addColumn("lojas", nomeColuna, definicao);
+          console.log(`✅ Coluna ${nomeColuna} adicionada às lojas!`);
+        }
+      }
     }
 
 

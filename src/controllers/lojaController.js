@@ -99,6 +99,10 @@ export const criarLoja = async (req, res) => {
       estado,
       responsavel,
       telefone,
+      statusOperacao,
+      dataInicio,
+      observacoes,
+      dataVencimentoExtintor,
       valorFichaPadrao,
     } = req.body;
 
@@ -120,9 +124,14 @@ export const criarLoja = async (req, res) => {
       estado,
       responsavel,
       telefone,
+      statusOperacao: statusOperacao || "ATIVA",
+      dataInicio: dataInicio || null,
+      observacoes: observacoes || null,
+      dataVencimentoExtintor: dataVencimentoExtintor || null,
       valorFichaPadrao: valorFichaNormalizado.informado
         ? valorFichaNormalizado.valor
         : VALOR_FICHA_PADRAO_DEFAULT,
+      ativo: statusOperacao ? statusOperacao !== "INATIVA" : true,
     });
 
     res.locals.entityId = loja.id;
@@ -149,6 +158,10 @@ export const atualizarLoja = async (req, res) => {
       estado,
       responsavel,
       telefone,
+      statusOperacao,
+      dataInicio,
+      observacoes,
+      dataVencimentoExtintor,
       ativo,
       valorFichaPadrao,
     } = req.body;
@@ -167,10 +180,18 @@ export const atualizarLoja = async (req, res) => {
       estado: estado ?? loja.estado,
       responsavel: responsavel ?? loja.responsavel,
       telefone: telefone ?? loja.telefone,
+      statusOperacao: statusOperacao ?? loja.statusOperacao,
+      dataInicio: dataInicio ?? loja.dataInicio,
+      observacoes: observacoes ?? loja.observacoes,
+      dataVencimentoExtintor:
+        dataVencimentoExtintor ?? loja.dataVencimentoExtintor,
       valorFichaPadrao: valorFichaNormalizado.informado
         ? valorFichaNormalizado.valor
         : loja.valorFichaPadrao,
-      ativo: ativo ?? loja.ativo,
+      ativo:
+        statusOperacao !== undefined
+          ? statusOperacao !== "INATIVA"
+          : ativo ?? loja.ativo,
     });
 
     res.json(loja);

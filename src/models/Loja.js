@@ -33,6 +33,27 @@ const Loja = sequelize.define(
       type: DataTypes.STRING(20),
       allowNull: true,
     },
+    statusOperacao: {
+      type: DataTypes.STRING(30),
+      allowNull: false,
+      defaultValue: "ATIVA",
+      field: "status_operacao",
+      comment: "Status operacional: ATIVA, INATIVA ou EM_IMPLANTACAO",
+    },
+    dataInicio: {
+      type: DataTypes.DATEONLY,
+      allowNull: true,
+      field: "data_inicio",
+    },
+    observacoes: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
+    dataVencimentoExtintor: {
+      type: DataTypes.DATEONLY,
+      allowNull: true,
+      field: "data_vencimento_extintor",
+    },
     valorFichaPadrao: {
       type: DataTypes.DECIMAL(10, 2),
       allowNull: false,
