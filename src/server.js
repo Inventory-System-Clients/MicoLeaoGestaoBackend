@@ -29,7 +29,7 @@ const allowedOrigins = [
   "http://localhost:5173",
   "http://localhost:3000",
   "http://localhost:5174",
-  "https://agarramaisop.selfmachine.com.br",
+  "https://micoleaogestao.selfmachine.com.br",
   "https://grupogk.selfmachine.com.br",
   process.env.FRONTEND_URL,
 ].filter(Boolean); // Remove undefined se FRONTEND_URL nÃ£o estiver definida
