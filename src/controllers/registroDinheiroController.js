@@ -1,4 +1,4 @@
-import RegistroDinheiro from "../models/RegistroDinheiro.js";
+﻿import RegistroDinheiro from "../models/RegistroDinheiro.js";
 import { Op, fn, col, cast, where as sequelizeWhere } from "sequelize";
 import { sequelize } from "../database/connection.js";
 import {
@@ -10,10 +10,6 @@ import {
   Maquina,
   Produto,
 } from "../models/index.js";
-import {
-  consultarFechamentoMachinePay,
-  fecharFechamentoMachinePay,
-} from "../services/machinePayService.js";
 
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 
@@ -141,7 +137,7 @@ const obterTotaisFixosMensais = async (lojaId, mesesIntervalo) => {
         });
       } catch (error) {
         console.warn(
-          "[RegistroDinheiro] Falha ao persistir total fixo mensal, seguindo com cálculo em memória:",
+          "[RegistroDinheiro] Falha ao persistir total fixo mensal, seguindo com cÃ¡lculo em memÃ³ria:",
           error.message,
         );
       }
@@ -263,155 +259,6 @@ const calcularGastosPeriodo = async (lojaId, inicio, fim) => {
 };
 
 const registroDinheiroController = {
-  async consultarMachinePay(req, res) {
-    try {
-      const { maquinaId, inicio, fim } = req.query;
-
-      if (!maquinaId || !inicio || !fim) {
-        return res.status(400).json({
-          error: "Informe máquina, início e fim para consultar a Machine Pay.",
-        });
-      }
-
-      const maquina = await Maquina.findByPk(maquinaId, {
-        attributes: ["id", "codigo", "nome", "machinePayPosId"],
-      });
-
-      if (!maquina) {
-        return res.status(404).json({ error: "Máquina não encontrada." });
-      }
-
-      if (!maquina.machinePayPosId) {
-        return res.status(400).json({
-          error: "Esta máquina ainda não possui ID da Machine Pay cadastrado.",
-        });
-      }
-
-      const dados = await consultarFechamentoMachinePay({
-        posId: maquina.machinePayPosId,
-        inicio,
-        fim,
-      });
-
-      return res.json({
-        maquinaId: maquina.id,
-        machinePayPosId: maquina.machinePayPosId,
-        inicio,
-        fim,
-        ...dados,
-      });
-    } catch (err) {
-      console.error("[MachinePay] Erro ao consultar fechamento:", err);
-      return res.status(502).json({
-        error: "Não foi possível consultar a Machine Pay.",
-        details: err.message,
-      });
-    }
-  },
-
-  async consultarMachinePayTotal(req, res) {
-    try {
-      const { inicio, fim } = req.query;
-
-      if (!inicio || !fim) {
-        return res.status(400).json({
-          error: "Informe início e fim para consultar o total da Machine Pay.",
-        });
-      }
-
-      const inicioPeriodo = new Date(inicio);
-      const fimPeriodo = new Date(fim);
-
-      if (
-        Number.isNaN(inicioPeriodo.getTime()) ||
-        Number.isNaN(fimPeriodo.getTime())
-      ) {
-        return res.status(400).json({
-          error: "Período inválido para consultar o total da Machine Pay.",
-        });
-      }
-
-      const maquinas = await Maquina.findAll({
-        where: {
-          machinePayPosId: {
-            [Op.ne]: null,
-          },
-        },
-        attributes: ["id", "machinePayPosId", "nome", "codigo"],
-        raw: true,
-      });
-
-      if (!maquinas.length) {
-        return res.json({
-          totalBrutoComTaxasMp: 0,
-          totalPix: 0,
-          totalCartao: 0,
-          totalLiquido: 0,
-          maquinaCount: 0,
-          maquinas: [],
-        });
-      }
-
-      const resultados = await Promise.all(
-        maquinas.map(async (maquina) => {
-          try {
-            const dados = await consultarFechamentoMachinePay({
-              posId: maquina.machinePayPosId,
-              inicio,
-              fim,
-            });
-            return {
-              maquinaId: maquina.id,
-              machinePayPosId: maquina.machinePayPosId,
-              nome: maquina.nome,
-              codigo: maquina.codigo,
-              ...dados,
-            };
-          } catch (err) {
-            console.error(
-              `[MachinePay] Erro ao consultar máquina ${maquina.id} (pos ${maquina.machinePayPosId}):`,
-              err.message,
-            );
-            return null;
-          }
-        }),
-      );
-
-      const maquinasComDados = resultados.filter(Boolean);
-      const totalBrutoComTaxasMp = maquinasComDados.reduce(
-        (acc, item) => acc + Number(item.brutoComTaxasMp || 0),
-        0,
-      );
-      const totalPix = maquinasComDados.reduce(
-        (acc, item) => acc + Number(item.pix || 0),
-        0,
-      );
-      const totalCartao = maquinasComDados.reduce(
-        (acc, item) => acc + Number(item.cartao || 0),
-        0,
-      );
-      const totalLiquido = maquinasComDados.reduce(
-        (acc, item) => acc + Number(item.liquido || 0),
-        0,
-      );
-
-      return res.json({
-        totalBrutoComTaxasMp,
-        totalPix,
-        totalCartao,
-        totalLiquido,
-        maquinaCount: maquinasComDados.length,
-        maquinas: maquinasComDados,
-      });
-    } catch (err) {
-      console.error("[MachinePay] Erro ao consultar total Machine Pay:", err);
-      return res.status(502).json({
-        error: "Não foi possível consultar o total da Machine Pay.",
-        details: err.message,
-      });
-    }
-  },
-
   async criar(req, res) {
     try {
       const {
@@ -432,10 +279,10 @@ const registroDinheiroController = {
       console.log("[RegistrarDinheiro] Dados recebidos:", req.body);
 
       if (!loja || !inicio || !fim) {
-        console.error("[RegistrarDinheiro] Campos obrigatórios ausentes");
+        console.error("[RegistrarDinheiro] Campos obrigatÃ³rios ausentes");
         return res
           .status(400)
-          .json({ error: "Campos obrigatórios ausentes: loja, início e fim." });
+          .json({ error: "Campos obrigatÃ³rios ausentes: loja, inÃ­cio e fim." });
       }
 
       const inicioPeriodo = new Date(inicio);
@@ -445,13 +292,13 @@ const registroDinheiroController = {
         Number.isNaN(inicioPeriodo.getTime()) ||
         Number.isNaN(fimPeriodo.getTime())
       ) {
-        return res.status(400).json({ error: "Período inválido." });
+        return res.status(400).json({ error: "PerÃ­odo invÃ¡lido." });
       }
 
       if (fimPeriodo < inicioPeriodo) {
         return res
           .status(400)
-          .json({ error: "Data fim não pode ser menor que data início." });
+          .json({ error: "Data fim nÃ£o pode ser menor que data inÃ­cio." });
       }
 
       if (!Array.isArray(gastosVariaveis)) {
@@ -584,49 +431,7 @@ const registroDinheiroController = {
 
         await transaction.commit();
 
-        let fechamentoMachinePay = {
-          executado: false,
-          concluido: false,
-          erro: null,
-        };
-
-        if (!ehRegistroTotalLoja && maquina) {
-          try {
-            const maquinaFechamento = await Maquina.findByPk(maquina, {
-              attributes: ["id", "machinePayPosId"],
-            });
-
-            if (maquinaFechamento?.machinePayPosId) {
-              const resultadoFechamento = await fecharFechamentoMachinePay({
-                posId: maquinaFechamento.machinePayPosId,
-                inicio,
-                fim,
-                valor: dadosRegistro.valorDinheiro,
-              });
-
-              fechamentoMachinePay = {
-                executado: true,
-                concluido: resultadoFechamento.concluido,
-                erro: null,
-              };
-            }
-          } catch (machinePayError) {
-            console.error(
-              "[MachinePay] Erro ao executar fechamento:",
-              machinePayError,
-            );
-            fechamentoMachinePay = {
-              executado: true,
-              concluido: false,
-              erro: machinePayError.message,
-            };
-          }
-        }
-
-        return res.status(201).json({
-          ...registro.toJSON(),
-          fechamentoMachinePay,
-        });
+        return res.status(201).json(registro.toJSON());
       } catch (dbError) {
         await transaction.rollback();
         throw dbError;
@@ -654,3 +459,4 @@ const registroDinheiroController = {
 };
 
 export default registroDinheiroController;
+
