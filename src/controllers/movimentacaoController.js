@@ -455,6 +455,63 @@ export const listarMovimentacoes = async (req, res) => {
 };
 
 // Obter movimentação por ID
+export const obterUltimaMovimentacaoPorMaquina = async (req, res) => {
+  try {
+    const { maquinaId } = req.params;
+
+    if (!maquinaId) {
+      return res.status(400).json({ error: "maquinaId e obrigatorio" });
+    }
+
+    const movimentacao = await Movimentacao.findOne({
+      where: { maquinaId },
+      include: [
+        {
+          model: Maquina,
+          as: "maquina",
+          attributes: ["id", "codigo", "nome", "lojaId"],
+        },
+        {
+          model: Usuario,
+          as: "usuario",
+          attributes: ["id", "nome"],
+        },
+        {
+          model: MovimentacaoProduto,
+          as: "detalhesProdutos",
+          include: [
+            {
+              model: Produto,
+              as: "produto",
+              attributes: ["id", "nome"],
+            },
+          ],
+        },
+      ],
+      order: [
+        ["dataColeta", "DESC"],
+        ["createdAt", "DESC"],
+      ],
+    });
+
+    if (!movimentacao) {
+      return res.json(null);
+    }
+
+    const json = movimentacao.toJSON();
+    return res.json({
+      ...json,
+      usuarioNome: json.usuario?.nome || json.usuario?.email || null,
+      dataMovimentacao: json.dataColeta || json.createdAt || null,
+    });
+  } catch (error) {
+    console.error("Erro ao obter ultima movimentacao da maquina:", error);
+    return res
+      .status(500)
+      .json({ error: "Erro ao obter ultima movimentacao da maquina" });
+  }
+};
+
 export const obterMovimentacao = async (req, res) => {
   try {
     const movimentacao = await Movimentacao.findByPk(req.params.id, {

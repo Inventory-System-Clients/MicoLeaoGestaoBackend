@@ -2,6 +2,7 @@ import express from "express";
 import {
   registrarMovimentacao,
   listarMovimentacoes,
+  obterUltimaMovimentacaoPorMaquina,
   obterMovimentacao,
   atualizarMovimentacao,
   deletarMovimentacao,
@@ -15,6 +16,11 @@ import {
 const router = express.Router();
 
 router.get("/", autenticar, listarMovimentacoes);
+router.get(
+  "/maquina/:maquinaId/ultima",
+  autenticar,
+  obterUltimaMovimentacaoPorMaquina
+);
 router.get("/:id", autenticar, obterMovimentacao);
 router.post(
   "/",
