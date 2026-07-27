@@ -24,6 +24,8 @@ import ListaComprasPendente from "./ListaComprasPendente.js";
 import ListaComprasLoja from "./ListaComprasLoja.js";
 import ListaComprasProduto from "./ListaComprasProduto.js";
 import AlertaMovimentacao from "./AlertaMovimentacao.js";
+import Roteiro from "./Roteiro.js";
+import RoteiroItem from "./RoteiroItem.js";
 // MovimentaÃ§Ã£o de VeÃ­culo -> VeÃ­culo e UsuÃ¡rio
 MovimentacaoVeiculo.belongsTo(Veiculo, {
   as: "veiculo",
@@ -317,6 +319,42 @@ ListaComprasProduto.belongsTo(ListaComprasLoja, {
   as: "listaLoja",
 });
 
+Usuario.hasMany(Roteiro, {
+  foreignKey: "usuarioId",
+  as: "roteiros",
+});
+Roteiro.belongsTo(Usuario, {
+  foreignKey: "usuarioId",
+  as: "funcionario",
+});
+
+Veiculo.hasMany(Roteiro, {
+  foreignKey: "veiculoId",
+  as: "roteiros",
+});
+Roteiro.belongsTo(Veiculo, {
+  foreignKey: "veiculoId",
+  as: "veiculo",
+});
+
+Roteiro.hasMany(RoteiroItem, {
+  foreignKey: "roteiroId",
+  as: "itens",
+  onDelete: "CASCADE",
+});
+RoteiroItem.belongsTo(Roteiro, {
+  foreignKey: "roteiroId",
+  as: "roteiro",
+});
+RoteiroItem.belongsTo(Loja, {
+  foreignKey: "lojaId",
+  as: "loja",
+});
+Loja.hasMany(RoteiroItem, {
+  foreignKey: "lojaId",
+  as: "itensRoteiro",
+});
+
 
 export {
   Usuario,
@@ -345,5 +383,7 @@ export {
   ListaComprasLoja,
   ListaComprasProduto,
   AlertaMovimentacao,
+  Roteiro,
+  RoteiroItem,
 };
 
