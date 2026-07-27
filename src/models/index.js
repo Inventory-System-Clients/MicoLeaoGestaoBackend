@@ -1,4 +1,4 @@
-import MovimentacaoVeiculo from "./MovimentacaoVeiculo.js";
+﻿import MovimentacaoVeiculo from "./MovimentacaoVeiculo.js";
 import GastoVariavel from "./GastoVariavel.js";
 import Usuario from "./Usuario.js";
 import Loja from "./Loja.js";
@@ -24,10 +24,7 @@ import ListaComprasPendente from "./ListaComprasPendente.js";
 import ListaComprasLoja from "./ListaComprasLoja.js";
 import ListaComprasProduto from "./ListaComprasProduto.js";
 import AlertaMovimentacao from "./AlertaMovimentacao.js";
-import SuporteItem from "./SuporteItem.js";
-import SuporteMovimentacao from "./SuporteMovimentacao.js";
-import SuporteDevolucaoPendente from "./SuporteDevolucaoPendente.js";
-// Movimentação de Veículo -> Veículo e Usuário
+// MovimentaÃ§Ã£o de VeÃ­culo -> VeÃ­culo e UsuÃ¡rio
 MovimentacaoVeiculo.belongsTo(Veiculo, {
   as: "veiculo",
   foreignKey: "veiculoId",
@@ -53,19 +50,19 @@ Usuario.hasMany(MovimentacaoEstoqueLoja, {
   as: "movimentacoesEstoque",
 });
 
-// Loja -> Máquinas
+// Loja -> MÃ¡quinas
 Loja.hasMany(Maquina, { foreignKey: "lojaId", as: "maquinas" });
 Maquina.belongsTo(Loja, { foreignKey: "lojaId", as: "loja" });
 
-// Máquina -> Movimentações
+// MÃ¡quina -> MovimentaÃ§Ãµes
 Maquina.hasMany(Movimentacao, { foreignKey: "maquinaId", as: "movimentacoes" });
 Movimentacao.belongsTo(Maquina, { foreignKey: "maquinaId", as: "maquina" });
 
-// Usuário -> Movimentações
+// UsuÃ¡rio -> MovimentaÃ§Ãµes
 Usuario.hasMany(Movimentacao, { foreignKey: "usuarioId", as: "movimentacoes" });
 Movimentacao.belongsTo(Usuario, { foreignKey: "usuarioId", as: "usuario" });
 
-// Movimentação <-> Produtos (many-to-many)
+// MovimentaÃ§Ã£o <-> Produtos (many-to-many)
 Movimentacao.belongsToMany(Produto, {
   through: MovimentacaoProduto,
   foreignKey: "movimentacaoId",
@@ -80,7 +77,7 @@ Produto.belongsToMany(Movimentacao, {
   as: "movimentacoes",
 });
 
-// Acesso direto à tabela intermediária
+// Acesso direto Ã  tabela intermediÃ¡ria
 Movimentacao.hasMany(MovimentacaoProduto, {
   foreignKey: "movimentacaoId",
   as: "detalhesProdutos",
@@ -91,11 +88,11 @@ MovimentacaoProduto.belongsTo(Produto, {
   as: "produto",
 });
 
-// Usuário -> Logs
+// UsuÃ¡rio -> Logs
 Usuario.hasMany(LogAtividade, { foreignKey: "usuarioId", as: "logs" });
 LogAtividade.belongsTo(Usuario, { foreignKey: "usuarioId", as: "usuario" });
 
-// Usuário <-> Lojas (RBAC - many-to-many)
+// UsuÃ¡rio <-> Lojas (RBAC - many-to-many)
 Usuario.belongsToMany(Loja, {
   through: UsuarioLoja,
   foreignKey: "usuarioId",
@@ -110,7 +107,7 @@ Loja.belongsToMany(Usuario, {
   as: "usuariosPermitidos",
 });
 
-// Acesso direto à tabela UsuarioLoja
+// Acesso direto Ã  tabela UsuarioLoja
 Usuario.hasMany(UsuarioLoja, {
   foreignKey: "usuarioId",
   as: "permissoesLojas",
@@ -320,70 +317,6 @@ ListaComprasProduto.belongsTo(ListaComprasLoja, {
   as: "listaLoja",
 });
 
-// Suporte Técnico - Item <-> Movimentações
-SuporteItem.hasMany(SuporteMovimentacao, {
-  foreignKey: "itemId",
-  as: "movimentacoes",
-});
-SuporteMovimentacao.belongsTo(SuporteItem, {
-  foreignKey: "itemId",
-  as: "item",
-});
-
-SuporteItem.belongsTo(Usuario, {
-  foreignKey: "criadoPorId",
-  as: "criadoPor",
-});
-Usuario.hasMany(SuporteItem, {
-  foreignKey: "criadoPorId",
-  as: "itensSuporteCriados",
-});
-
-SuporteMovimentacao.belongsTo(Usuario, {
-  foreignKey: "usuarioId",
-  as: "usuario",
-});
-Usuario.hasMany(SuporteMovimentacao, {
-  foreignKey: "usuarioId",
-  as: "movimentacoesSuporte",
-});
-
-// Suporte Técnico - Devoluções pendentes (geradas por saídas de troca)
-SuporteItem.hasMany(SuporteDevolucaoPendente, {
-  foreignKey: "itemId",
-  as: "devolucoesPendentes",
-});
-SuporteDevolucaoPendente.belongsTo(SuporteItem, {
-  foreignKey: "itemId",
-  as: "item",
-});
-
-SuporteMovimentacao.hasOne(SuporteDevolucaoPendente, {
-  foreignKey: "movimentacaoOrigemId",
-  as: "devolucaoGerada",
-});
-SuporteDevolucaoPendente.belongsTo(SuporteMovimentacao, {
-  foreignKey: "movimentacaoOrigemId",
-  as: "movimentacaoOrigem",
-});
-
-SuporteMovimentacao.hasOne(SuporteDevolucaoPendente, {
-  foreignKey: "movimentacaoResolucaoId",
-  as: "devolucaoResolvida",
-});
-SuporteDevolucaoPendente.belongsTo(SuporteMovimentacao, {
-  foreignKey: "movimentacaoResolucaoId",
-  as: "movimentacaoResolucao",
-});
-
-SuporteDevolucaoPendente.belongsTo(Usuario, {
-  foreignKey: "criadoPorId",
-  as: "criadoPor",
-});
-Usuario.hasMany(SuporteDevolucaoPendente, {
-  foreignKey: "criadoPorId",
-  as: "devolucoesPendentesCriadas",
-});
 
 export {
   Usuario,
@@ -412,7 +345,5 @@ export {
   ListaComprasLoja,
   ListaComprasProduto,
   AlertaMovimentacao,
-  SuporteItem,
-  SuporteMovimentacao,
-  SuporteDevolucaoPendente,
 };
+

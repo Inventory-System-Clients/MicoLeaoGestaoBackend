@@ -175,17 +175,6 @@ const startServer = async () => {
       console.log("✅ Coluna veiculoId adicionada a GastoVariavel!");
     }
 
-    const colunasSuporteMovimentacoes = await queryInterface.describeTable(
-      "suporte_movimentacoes",
-    );
-    if (!colunasSuporteMovimentacoes.categoria) {
-      const { DataTypes } = await import("sequelize");
-      await queryInterface.addColumn("suporte_movimentacoes", "categoria", {
-        type: DataTypes.ENUM("VENDA", "TROCA", "COMPRA", "DEVOLUCAO"),
-        allowNull: true,
-      });
-      console.log("✅ Coluna categoria adicionada a suporte_movimentacoes!");
-    }
 
     const { Usuario } = await import("./models/index.js");
     const adminEmail = process.env.ADMIN_EMAIL || "admin@agarramais.com";
@@ -251,4 +240,5 @@ const iniciarLimpezaAutomatica = async () => {
 startServer();
 
 export default app;
+
 

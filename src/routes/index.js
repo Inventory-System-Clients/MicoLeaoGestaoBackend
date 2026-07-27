@@ -24,7 +24,6 @@ import sangriaRoutes from "./sangria.routes.js";
 import listaComprasPendenteRoutes from "./listaComprasPendente.routes.js";
 import logAtividadeRoutes from "./logAtividade.routes.js";
 import assistenteIaRoutes from "./assistenteIa.routes.js";
-import suporteTecnicoRoutes from "./suporteTecnico.routes.js";
 const router = express.Router();
 
 router.use("/auth", authRoutes);
@@ -57,6 +56,5 @@ router.use("/alertas-movimentacao", alertaMovimentacaoRoutes);
 router.use("/fechamentos-mensais-relatorio", fechamentoMensalRelatorioRoutes);
 router.use("/sangrias", sangriaRoutes);
 router.use("/lista-compras-pendentes", listaComprasPendenteRoutes);
-router.use("/suporte-tecnico", suporteTecnicoRoutes);
 
 export default router;
