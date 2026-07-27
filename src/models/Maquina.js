@@ -36,7 +36,7 @@ const Maquina = sequelize.define(
       type: DataTypes.INTEGER,
       allowNull: false,
       defaultValue: 100,
-      comment: "Quantidade mÃ¡xima que a mÃ¡quina comporta",
+      comment: "Quantidade máxima que a máquina comporta",
     },
     valorFicha: {
       type: DataTypes.DECIMAL(10, 2),
@@ -48,7 +48,7 @@ const Maquina = sequelize.define(
       type: DataTypes.INTEGER,
       allowNull: true,
       field: "fichas_necessarias",
-      comment: "Quantidade de fichas necessÃ¡rias para liberar uma jogada",
+      comment: "Quantidade de fichas necessárias para liberar uma jogada",
       validate: {
         min: 1,
       },
@@ -57,13 +57,13 @@ const Maquina = sequelize.define(
       type: DataTypes.DECIMAL(10, 2),
       allowNull: true,
       field: "jogadas_boas_por_pelucia",
-      comment: "Quantidade ideal de jogadas para sair uma pelÃƒÂºcia",
+      comment: "Quantidade ideal de jogadas para sair uma pelúcia",
     },
     forcaForte: {
       type: DataTypes.INTEGER,
       allowNull: true,
       field: "forca_forte",
-      comment: "ForÃ§a forte da garra em percentual (0-100%)",
+      comment: "Força forte da garra em percentual (0-100%)",
       validate: {
         min: 0,
         max: 100,
@@ -73,7 +73,7 @@ const Maquina = sequelize.define(
       type: DataTypes.INTEGER,
       allowNull: true,
       field: "forca_fraca",
-      comment: "ForÃ§a fraca da garra em percentual (0-100%)",
+      comment: "Força fraca da garra em percentual (0-100%)",
       validate: {
         min: 0,
         max: 100,
@@ -83,7 +83,7 @@ const Maquina = sequelize.define(
       type: DataTypes.INTEGER,
       allowNull: true,
       field: "forca_premium",
-      comment: "ForÃ§a premium da garra em percentual (0-100%)",
+      comment: "Força premium da garra em percentual (0-100%)",
       validate: {
         min: 0,
         max: 100,
@@ -93,7 +93,7 @@ const Maquina = sequelize.define(
       type: DataTypes.INTEGER,
       allowNull: true,
       field: "jogadas_premium",
-      comment: "Quantidade de jogadas para usar a forÃ§a premium",
+      comment: "Quantidade de jogadas para usar a força premium",
       validate: {
         min: 1,
       },
@@ -102,12 +102,12 @@ const Maquina = sequelize.define(
       type: DataTypes.INTEGER,
       allowNull: false,
       defaultValue: 30,
-      comment: "Porcentagem mÃ­nima para alertar estoque baixo",
+      comment: "Porcentagem mínima para alertar estoque baixo",
     },
     localizacao: {
       type: DataTypes.STRING(100),
       allowNull: true,
-      comment: "PosiÃ§Ã£o dentro da loja",
+      comment: "Posição dentro da loja",
     },
     ativo: {
       type: DataTypes.BOOLEAN,

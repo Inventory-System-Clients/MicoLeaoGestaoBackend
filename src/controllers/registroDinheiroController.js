@@ -137,7 +137,7 @@ const obterTotaisFixosMensais = async (lojaId, mesesIntervalo) => {
         });
       } catch (error) {
         console.warn(
-          "[RegistroDinheiro] Falha ao persistir total fixo mensal, seguindo com cÃ¡lculo em memÃ³ria:",
+          "[RegistroDinheiro] Falha ao persistir total fixo mensal, seguindo com cálculo em memória:",
           error.message,
         );
       }
@@ -279,10 +279,10 @@ const registroDinheiroController = {
       console.log("[RegistrarDinheiro] Dados recebidos:", req.body);
 
       if (!loja || !inicio || !fim) {
-        console.error("[RegistrarDinheiro] Campos obrigatÃ³rios ausentes");
+        console.error("[RegistrarDinheiro] Campos obrigatórios ausentes");
         return res
           .status(400)
-          .json({ error: "Campos obrigatÃ³rios ausentes: loja, inÃ­cio e fim." });
+          .json({ error: "Campos obrigatórios ausentes: loja, início e fim." });
       }
 
       const inicioPeriodo = new Date(inicio);
@@ -292,13 +292,13 @@ const registroDinheiroController = {
         Number.isNaN(inicioPeriodo.getTime()) ||
         Number.isNaN(fimPeriodo.getTime())
       ) {
-        return res.status(400).json({ error: "PerÃ­odo invÃ¡lido." });
+        return res.status(400).json({ error: "Período inválido." });
       }
 
       if (fimPeriodo < inicioPeriodo) {
         return res
           .status(400)
-          .json({ error: "Data fim nÃ£o pode ser menor que data inÃ­cio." });
+          .json({ error: "Data fim não pode ser menor que data início." });
       }
 
       if (!Array.isArray(gastosVariaveis)) {
