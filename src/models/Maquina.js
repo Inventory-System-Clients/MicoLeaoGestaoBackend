@@ -67,12 +67,6 @@ const Maquina = sequelize.define(
       field: "jogadas_boas_por_pelucia",
       comment: "Quantidade ideal de jogadas para sair uma pelúcia",
     },
-    mediaSaidaEsperada: {
-      type: DataTypes.DECIMAL(10, 2),
-      allowNull: true,
-      field: "media_saida_esperada",
-      comment: "Média esperada de saída de pelúcias por movimentação",
-    },
     forcaForte: {
       type: DataTypes.INTEGER,
       allowNull: true,

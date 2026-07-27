@@ -150,10 +150,6 @@ const startServer = async () => {
             defaultValue: "EM_OPERACAO",
           },
         ],
-        [
-          "media_saida_esperada",
-          { type: DataTypes.DECIMAL(10, 2), allowNull: true },
-        ],
       ];
 
       for (const [nomeColuna, definicao] of colunasNovasMaquinas) {
