@@ -11,7 +11,7 @@ const Maquina = sequelize.define(
     },
     codigo: {
       type: DataTypes.STRING(50),
-      allowNull: false,
+      allowNull: true,
       unique: true,
       comment: "Ex: M01, M02, TK BALL",
     },
@@ -38,7 +38,7 @@ const Maquina = sequelize.define(
       defaultValue: "EM_OPERACAO",
       field: "status_operacao",
       comment:
-        "Status operacional: EM_OPERACAO, EM_MANUTENCAO, PRONTA_PARA_SAIDA, PARADA ou EM_TRANSPORTE",
+        "Status operacional: EM_OPERACAO, EM_MANUTENCAO, PRONTA_PARA_SAIDA, PARADA, EM_TRANSPORTE ou SEM_LOJA",
     },
     capacidadePadrao: {
       type: DataTypes.INTEGER,

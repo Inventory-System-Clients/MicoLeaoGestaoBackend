@@ -1,5 +1,13 @@
 import { Maquina, Loja, Movimentacao } from "../models/index.js";
 
+const normalizarLojaId = (lojaId) => (lojaId ? lojaId : null);
+
+const normalizarStatusOperacao = ({ lojaId, statusOperacao }) => {
+  const status = statusOperacao || (lojaId ? "EM_OPERACAO" : "PARADA");
+  if (!lojaId && status === "EM_OPERACAO") return "PARADA";
+  return status;
+};
+
 // US05 - Listar máquinas
 export const listarMaquinas = async (req, res) => {
   try {
@@ -81,10 +89,8 @@ export const criarMaquina = async (req, res) => {
       localizacao,
     } = req.body;
 
-    if (!codigo || !lojaId) {
-      return res
-        .status(400)
-        .json({ error: "Código e ID da loja são obrigatórios" });
+    if (!codigo) {
+      return res.status(400).json({ error: "Codigo da maquina e obrigatorio" });
     }
 
     // Verificar se código já existe
@@ -93,12 +99,17 @@ export const criarMaquina = async (req, res) => {
       return res.status(400).json({ error: "Código de máquina já existe" });
     }
 
+    const lojaNormalizada = normalizarLojaId(lojaId);
+
     const maquina = await Maquina.create({
       codigo,
       nome,
       tipo,
-      lojaId,
-      statusOperacao: statusOperacao || "EM_OPERACAO",
+      lojaId: lojaNormalizada,
+      statusOperacao: normalizarStatusOperacao({
+        lojaId: lojaNormalizada,
+        statusOperacao,
+      }),
       capacidadePadrao: capacidadePadrao || 100,
       valorFicha: valorFicha || 5.0,
       fichasNecessarias: fichasNecessarias || null,
@@ -155,12 +166,18 @@ export const atualizarMaquina = async (req, res) => {
       }
     }
 
+    const lojaNormalizada =
+      lojaId !== undefined ? normalizarLojaId(lojaId) : maquina.lojaId;
+
     await maquina.update({
       codigo: codigo ?? maquina.codigo,
       nome: nome ?? maquina.nome,
       tipo: tipo ?? maquina.tipo,
-      lojaId: lojaId ?? maquina.lojaId,
-      statusOperacao: statusOperacao ?? maquina.statusOperacao,
+      lojaId: lojaNormalizada,
+      statusOperacao: normalizarStatusOperacao({
+        lojaId: lojaNormalizada,
+        statusOperacao: statusOperacao ?? maquina.statusOperacao,
+      }),
       capacidadePadrao: capacidadePadrao ?? maquina.capacidadePadrao,
       valorFicha: valorFicha ?? maquina.valorFicha,
       fichasNecessarias: fichasNecessarias ?? maquina.fichasNecessarias,

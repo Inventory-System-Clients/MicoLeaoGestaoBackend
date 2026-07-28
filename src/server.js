@@ -129,6 +129,20 @@ const startServer = async () => {
     const colunasMaquinas = await queryInterface.describeTable("maquinas");
     const colunasLojas = await queryInterface.describeTable("lojas");
 
+    {
+      const { DataTypes } = await import("sequelize");
+      if (colunasMaquinas.lojaId?.allowNull === false) {
+        await queryInterface.changeColumn("maquinas", "lojaId", {
+          type: DataTypes.UUID,
+          allowNull: true,
+          references: { model: "lojas", key: "id" },
+          onUpdate: "CASCADE",
+          onDelete: "SET NULL",
+        });
+        console.log("✅ Coluna lojaId das máquinas agora aceita sem loja!");
+      }
+    }
+
     // Criar admin padrão se não existir
     if (!colunasMaquinas.jogadas_boas_por_pelucia) {
       const { DataTypes } = await import("sequelize");
