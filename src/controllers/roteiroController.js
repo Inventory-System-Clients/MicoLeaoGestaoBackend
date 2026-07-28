@@ -3,7 +3,6 @@ import {
   Loja,
   Maquina,
   Roteiro,
-  RoteiroConfiguracao,
   RoteiroItem,
   Usuario,
   Veiculo,
@@ -55,22 +54,11 @@ const normalizarDiasSemana = (todosDias, diasSemana) => {
     .filter((dia) => Number.isInteger(dia) && dia >= 0 && dia <= 6);
 };
 
-const obterConfiguracaoReset = async () => {
-  const [config] = await RoteiroConfiguracao.findOrCreate({
-    where: { id: "global" },
-    defaults: {
-      diaSemanaReset: 0,
-      horaReset: "23:59",
-    },
-  });
-  return config;
-};
-
-const montarUltimoHorarioAgendado = (config, agora = new Date()) => {
-  const [hora, minuto] = String(config.horaReset || "23:59")
+const montarUltimoHorarioAgendado = (roteiro, agora = new Date()) => {
+  const [hora, minuto] = String(roteiro.horaReset || "23:59")
     .split(":")
     .map((parte) => Number.parseInt(parte, 10));
-  const diaSemanaReset = Number(config.diaSemanaReset || 0);
+  const diaSemanaReset = Number(roteiro.diaSemanaReset || 0);
   const data = new Date(agora);
   const diferencaDias = (data.getDay() - diaSemanaReset + 7) % 7;
 
@@ -88,16 +76,21 @@ const montarUltimoHorarioAgendado = (config, agora = new Date()) => {
 };
 
 const aplicarResetSeNecessario = async () => {
-  const config = await obterConfiguracaoReset();
-  const ultimoAgendado = montarUltimoHorarioAgendado(config);
-  const ultimoReset = config.ultimoResetEm ? new Date(config.ultimoResetEm) : null;
+  const roteiros = await Roteiro.findAll({
+    attributes: ["id", "diaSemanaReset", "horaReset", "ultimoResetEm"],
+  });
 
-  if (!ultimoReset || ultimoReset < ultimoAgendado) {
-    await RoteiroItem.update(
-      { concluido: false, concluidoEm: null, maquinasConcluidas: [] },
-      { where: {} },
-    );
-    await config.update({ ultimoResetEm: ultimoAgendado });
+  for (const roteiro of roteiros) {
+    const ultimoAgendado = montarUltimoHorarioAgendado(roteiro);
+    const ultimoReset = roteiro.ultimoResetEm ? new Date(roteiro.ultimoResetEm) : null;
+
+    if (!ultimoReset || ultimoReset < ultimoAgendado) {
+      await RoteiroItem.update(
+        { concluido: false, concluidoEm: null, maquinasConcluidas: [] },
+        { where: { roteiroId: roteiro.id } },
+      );
+      await roteiro.update({ ultimoResetEm: ultimoAgendado });
+    }
   }
 };
 
@@ -155,9 +148,31 @@ export const atualizarConfiguracaoRoteiro = async (req, res) => {
   }
 };
 
+const normalizarConfiguracaoResetRoteiro = (body, roteiro = {}) => {
+  const diaSemanaReset =
+    body.diaSemanaReset !== undefined
+      ? Number.parseInt(body.diaSemanaReset, 10)
+      : roteiro.diaSemanaReset ?? 0;
+  const horaReset =
+    body.horaReset !== undefined
+      ? String(body.horaReset || "").trim()
+      : roteiro.horaReset || "23:59";
+
+  if (!Number.isInteger(diaSemanaReset) || diaSemanaReset < 0 || diaSemanaReset > 6) {
+    throw new Error("Dia de reset invalido");
+  }
+
+  if (!/^\d{2}:\d{2}$/.test(horaReset)) {
+    throw new Error("Horario de reset invalido");
+  }
+
+  return { diaSemanaReset, horaReset };
+};
+
 export const criarRoteiro = async (req, res) => {
   try {
     const { nome, usuarioId, veiculoId, todosDias = true, diasSemana = [] } = req.body;
+    const configReset = normalizarConfiguracaoResetRoteiro(req.body);
 
     if (!nome || !usuarioId) {
       return res.status(400).json({ error: "Nome e funcionário são obrigatórios" });
@@ -179,11 +194,15 @@ export const criarRoteiro = async (req, res) => {
       veiculoId: veiculoId || null,
       todosDias: Boolean(todosDias),
       diasSemana: normalizarDiasSemana(Boolean(todosDias), diasSemana),
+      ...configReset,
     });
 
     res.locals.entityId = roteiro.id;
     res.status(201).json(await obterRoteiroCompleto(roteiro.id));
   } catch (error) {
+    if (error.message === "Dia de reset invalido" || error.message === "Horario de reset invalido") {
+      return res.status(400).json({ error: error.message });
+    }
     console.error("Erro ao criar roteiro:", error);
     res.status(500).json({ error: "Erro ao criar roteiro" });
   }
@@ -196,6 +215,7 @@ export const atualizarRoteiro = async (req, res) => {
 
     const { nome, usuarioId, veiculoId, todosDias, diasSemana, ativo } = req.body;
     const todosDiasFinal = todosDias !== undefined ? Boolean(todosDias) : roteiro.todosDias;
+    const configReset = normalizarConfiguracaoResetRoteiro(req.body, roteiro);
 
     await roteiro.update({
       nome: nome !== undefined ? String(nome).trim() : roteiro.nome,
@@ -206,11 +226,15 @@ export const atualizarRoteiro = async (req, res) => {
         diasSemana !== undefined
           ? normalizarDiasSemana(todosDiasFinal, diasSemana)
           : roteiro.diasSemana,
+      ...configReset,
       ativo: ativo ?? roteiro.ativo,
     });
 
     res.json(await obterRoteiroCompleto(roteiro.id));
   } catch (error) {
+    if (error.message === "Dia de reset invalido" || error.message === "Horario de reset invalido") {
+      return res.status(400).json({ error: error.message });
+    }
     console.error("Erro ao atualizar roteiro:", error);
     res.status(500).json({ error: "Erro ao atualizar roteiro" });
   }

@@ -1,7 +1,6 @@
 import express from "express";
 import {
   atualizarItemRoteiro,
-  atualizarConfiguracaoRoteiro,
   atualizarRoteiro,
   concluirItemRoteiro,
   concluirMaquinaRoteiro,
@@ -9,7 +8,6 @@ import {
   criarRoteiro,
   excluirItemRoteiro,
   excluirRoteiro,
-  obterConfiguracaoRoteiro,
   listarRoteiros,
 } from "../controllers/roteiroController.js";
 import { autenticar, registrarLog, requireAdmin } from "../middlewares/auth.js";
@@ -17,14 +15,6 @@ import { autenticar, registrarLog, requireAdmin } from "../middlewares/auth.js";
 const router = express.Router();
 
 router.get("/", autenticar, listarRoteiros);
-router.get("/configuracao", autenticar, requireAdmin, obterConfiguracaoRoteiro);
-router.put(
-  "/configuracao",
-  autenticar,
-  requireAdmin,
-  registrarLog("EDITAR_CONFIGURACAO_ROTEIRO", "RoteiroConfiguracao"),
-  atualizarConfiguracaoRoteiro,
-);
 router.post(
   "/",
   autenticar,

@@ -36,6 +36,20 @@ module.exports = {
         allowNull: false,
         defaultValue: [],
       },
+      dia_semana_reset: {
+        type: Sequelize.INTEGER,
+        allowNull: false,
+        defaultValue: 0,
+      },
+      hora_reset: {
+        type: Sequelize.STRING(5),
+        allowNull: false,
+        defaultValue: "23:59",
+      },
+      ultimo_reset_em: {
+        type: Sequelize.DATE,
+        allowNull: true,
+      },
       ativo: {
         type: Sequelize.BOOLEAN,
         allowNull: false,

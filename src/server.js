@@ -163,6 +163,28 @@ const startServer = async () => {
     {
       const { DataTypes } = await import("sequelize");
       const tabelas = await queryInterface.showAllTables();
+      if (tabelas.includes("roteiros")) {
+        const colunasRoteiros = await queryInterface.describeTable("roteiros");
+        const colunasResetRoteiros = [
+          [
+            "dia_semana_reset",
+            { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
+          ],
+          [
+            "hora_reset",
+            { type: DataTypes.STRING(5), allowNull: false, defaultValue: "23:59" },
+          ],
+          ["ultimo_reset_em", { type: DataTypes.DATE, allowNull: true }],
+        ];
+
+        for (const [nomeColuna, definicao] of colunasResetRoteiros) {
+          if (!colunasRoteiros[nomeColuna]) {
+            await queryInterface.addColumn("roteiros", nomeColuna, definicao);
+            console.log(`✅ Coluna ${nomeColuna} adicionada aos roteiros!`);
+          }
+        }
+      }
+
       if (tabelas.includes("roteiro_itens")) {
         const colunasRoteiroItens =
           await queryInterface.describeTable("roteiro_itens");
