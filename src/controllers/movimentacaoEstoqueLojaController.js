@@ -5,7 +5,7 @@ import { sequelize } from "../database/connection.js";
 
 const NOMES_ESTOQUE_CENTRAL = ["Depósito Principal", "Deposito Principal"];
 
-const obterOuCriarEstoqueCentral = async (transaction) => {
+export const obterOuCriarEstoqueCentral = async (transaction) => {
   let estoqueCentral = null;
 
   for (const nome of NOMES_ESTOQUE_CENTRAL) {

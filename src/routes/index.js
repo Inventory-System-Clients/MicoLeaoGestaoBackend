@@ -29,6 +29,8 @@ import treinamentoRoutes from "./treinamento.routes.js";
 import fornecedorRoutes from "./fornecedor.routes.js";
 import desenvolvimentoRoutes from "./desenvolvimento.routes.js";
 import modoSegurancaRoutes from "./modoSeguranca.routes.js";
+import insumoRoutes from "./insumo.routes.js";
+import pedidoPeluciaRoutes from "./pedidoPelucia.routes.js";
 import { bloquearSeModoSegurancaAtivo } from "../middlewares/modoSeguranca.js";
 const router = express.Router();
 
@@ -69,5 +71,7 @@ router.use("/roteiros", roteiroRoutes);
 router.use("/treinamentos", treinamentoRoutes);
 router.use("/fornecedores", fornecedorRoutes);
 router.use("/desenvolvimento", desenvolvimentoRoutes);
+router.use("/insumos", insumoRoutes);
+router.use("/pedidos-pelucia", pedidoPeluciaRoutes);
 
 export default router;
