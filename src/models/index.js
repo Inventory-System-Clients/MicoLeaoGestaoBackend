@@ -29,6 +29,9 @@ import RoteiroItem from "./RoteiroItem.js";
 import RoteiroConfiguracao from "./RoteiroConfiguracao.js";
 import TreinamentoVideo from "./TreinamentoVideo.js";
 import TreinamentoFeedback from "./TreinamentoFeedback.js";
+import Fornecedor from "./Fornecedor.js";
+import FornecedorProduto from "./FornecedorProduto.js";
+import FornecedorAnexo from "./FornecedorAnexo.js";
 // MovimentaÃ§Ã£o de VeÃ­culo -> VeÃ­culo e UsuÃ¡rio
 MovimentacaoVeiculo.belongsTo(Veiculo, {
   as: "veiculo",
@@ -376,6 +379,26 @@ TreinamentoFeedback.belongsTo(Usuario, {
   as: "usuario",
 });
 
+Fornecedor.hasMany(FornecedorProduto, {
+  foreignKey: "fornecedorId",
+  as: "produtos",
+  onDelete: "CASCADE",
+});
+FornecedorProduto.belongsTo(Fornecedor, {
+  foreignKey: "fornecedorId",
+  as: "fornecedor",
+});
+
+Fornecedor.hasMany(FornecedorAnexo, {
+  foreignKey: "fornecedorId",
+  as: "anexos",
+  onDelete: "CASCADE",
+});
+FornecedorAnexo.belongsTo(Fornecedor, {
+  foreignKey: "fornecedorId",
+  as: "fornecedor",
+});
+
 
 export {
   Usuario,
@@ -409,5 +432,8 @@ export {
   RoteiroConfiguracao,
   TreinamentoVideo,
   TreinamentoFeedback,
+  Fornecedor,
+  FornecedorProduto,
+  FornecedorAnexo,
 };
 
