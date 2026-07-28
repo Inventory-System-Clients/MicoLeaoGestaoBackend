@@ -498,9 +498,36 @@ export const obterUltimaMovimentacaoPorMaquina = async (req, res) => {
       return res.json(null);
     }
 
+    const [ultimoContadorIn, ultimoContadorOut] = await Promise.all([
+      Movimentacao.findOne({
+        where: {
+          maquinaId,
+          contadorIn: { [Op.ne]: null },
+        },
+        attributes: ["id", "contadorIn", "dataColeta", "createdAt"],
+        order: [
+          ["dataColeta", "DESC"],
+          ["createdAt", "DESC"],
+        ],
+      }),
+      Movimentacao.findOne({
+        where: {
+          maquinaId,
+          contadorOut: { [Op.ne]: null },
+        },
+        attributes: ["id", "contadorOut", "dataColeta", "createdAt"],
+        order: [
+          ["dataColeta", "DESC"],
+          ["createdAt", "DESC"],
+        ],
+      }),
+    ]);
+
     const json = movimentacao.toJSON();
     return res.json({
       ...json,
+      ultimoContadorIn: ultimoContadorIn?.contadorIn ?? null,
+      ultimoContadorOut: ultimoContadorOut?.contadorOut ?? null,
       usuarioNome: json.usuario?.nome || json.usuario?.email || null,
       dataMovimentacao: json.dataColeta || json.createdAt || null,
     });
@@ -509,6 +536,31 @@ export const obterUltimaMovimentacaoPorMaquina = async (req, res) => {
     return res
       .status(500)
       .json({ error: "Erro ao obter ultima movimentacao da maquina" });
+  }
+};
+
+export const obterUltimaMovimentacaoPorLojaEMaquina = async (req, res) => {
+  try {
+    const { lojaId, maquinaId } = req.params;
+
+    if (!lojaId || !maquinaId) {
+      return res.status(400).json({ error: "lojaId e maquinaId sao obrigatorios" });
+    }
+
+    const maquina = await Maquina.findOne({ where: { id: maquinaId, lojaId } });
+    if (!maquina) {
+      return res
+        .status(404)
+        .json({ error: "Maquina nao encontrada nesta loja" });
+    }
+
+    req.params.maquinaId = maquinaId;
+    return obterUltimaMovimentacaoPorMaquina(req, res);
+  } catch (error) {
+    console.error("Erro ao obter ultima movimentacao por loja e maquina:", error);
+    return res.status(500).json({
+      error: "Erro ao obter ultima movimentacao por loja e maquina",
+    });
   }
 };
 

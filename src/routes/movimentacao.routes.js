@@ -3,6 +3,7 @@ import {
   registrarMovimentacao,
   listarMovimentacoes,
   obterUltimaMovimentacaoPorMaquina,
+  obterUltimaMovimentacaoPorLojaEMaquina,
   obterMovimentacao,
   atualizarMovimentacao,
   deletarMovimentacao,
@@ -20,6 +21,11 @@ router.get(
   "/maquina/:maquinaId/ultima",
   autenticar,
   obterUltimaMovimentacaoPorMaquina
+);
+router.get(
+  "/loja/:lojaId/maquina/:maquinaId/ultima",
+  autenticar,
+  obterUltimaMovimentacaoPorLojaEMaquina
 );
 router.get("/:id", autenticar, obterMovimentacao);
 router.post(
