@@ -38,7 +38,7 @@ const Maquina = sequelize.define(
       defaultValue: "EM_OPERACAO",
       field: "status_operacao",
       comment:
-        "Status operacional: EM_OPERACAO, EM_MANUTENCAO, PRONTA_PARA_SAIDA, PARADA, EM_TRANSPORTE ou SEM_LOJA",
+        "Status operacional: EM_OPERACAO, EM_MANUTENCAO, PRONTA_PARA_SAIDA, PARADA ou SEM_LOJA",
     },
     capacidadePadrao: {
       type: DataTypes.INTEGER,

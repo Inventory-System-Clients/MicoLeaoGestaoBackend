@@ -5,6 +5,7 @@ const normalizarLojaId = (lojaId) => (lojaId ? lojaId : null);
 const normalizarStatusOperacao = ({ lojaId, statusOperacao }) => {
   const status = statusOperacao || (lojaId ? "EM_OPERACAO" : "PARADA");
   if (!lojaId && status === "EM_OPERACAO") return "PARADA";
+  if (status === "EM_TRANSPORTE") return "PARADA";
   return status;
 };
 
