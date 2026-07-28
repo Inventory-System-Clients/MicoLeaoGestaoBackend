@@ -33,6 +33,7 @@ import Fornecedor from "./Fornecedor.js";
 import FornecedorProduto from "./FornecedorProduto.js";
 import FornecedorAnexo from "./FornecedorAnexo.js";
 import DesenvolvimentoSugestao from "./DesenvolvimentoSugestao.js";
+import ModoSeguranca from "./ModoSeguranca.js";
 // MovimentaÃ§Ã£o de VeÃ­culo -> VeÃ­culo e UsuÃ¡rio
 MovimentacaoVeiculo.belongsTo(Veiculo, {
   as: "veiculo",
@@ -421,6 +422,15 @@ DesenvolvimentoSugestao.belongsTo(Usuario, {
   as: "baixadoPor",
 });
 
+ModoSeguranca.belongsTo(Usuario, {
+  foreignKey: "ativadoPorId",
+  as: "ativadoPor",
+});
+ModoSeguranca.belongsTo(Usuario, {
+  foreignKey: "desativadoPorId",
+  as: "desativadoPor",
+});
+
 
 export {
   Usuario,
@@ -458,5 +468,6 @@ export {
   FornecedorProduto,
   FornecedorAnexo,
   DesenvolvimentoSugestao,
+  ModoSeguranca,
 };
 

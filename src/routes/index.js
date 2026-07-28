@@ -28,7 +28,12 @@ import roteiroRoutes from "./roteiro.routes.js";
 import treinamentoRoutes from "./treinamento.routes.js";
 import fornecedorRoutes from "./fornecedor.routes.js";
 import desenvolvimentoRoutes from "./desenvolvimento.routes.js";
+import modoSegurancaRoutes from "./modoSeguranca.routes.js";
+import { bloquearSeModoSegurancaAtivo } from "../middlewares/modoSeguranca.js";
 const router = express.Router();
+
+router.use("/modo-seguranca", modoSegurancaRoutes);
+router.use(bloquearSeModoSegurancaAtivo);
 
 router.use("/auth", authRoutes);
 router.use("/usuarios", usuarioRoutes);
