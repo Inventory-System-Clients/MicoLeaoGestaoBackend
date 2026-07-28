@@ -41,6 +41,9 @@ import Peca from "./Peca.js";
 import EstoquePecaFuncionario from "./EstoquePecaFuncionario.js";
 import MovimentacaoPeca from "./MovimentacaoPeca.js";
 import ManutencaoPeca from "./ManutencaoPeca.js";
+import Envio from "./Envio.js";
+import Lacre from "./Lacre.js";
+import ItemLacre from "./ItemLacre.js";
 // MovimentaÃ§Ã£o de VeÃ­culo -> VeÃ­culo e UsuÃ¡rio
 MovimentacaoVeiculo.belongsTo(Veiculo, {
   as: "veiculo",
@@ -518,6 +521,26 @@ ManutencaoPeca.belongsTo(Manutencao, {
 ManutencaoPeca.belongsTo(Peca, { foreignKey: "pecaId", as: "peca" });
 ManutencaoPeca.belongsTo(Usuario, { foreignKey: "usuarioId", as: "usuario" });
 
+Loja.hasMany(Envio, { foreignKey: "lojaDestinoId", as: "enviosRecebidos" });
+Envio.belongsTo(Loja, { foreignKey: "lojaDestinoId", as: "lojaDestino" });
+Envio.belongsTo(Usuario, { foreignKey: "separadoPorId", as: "separadoPor" });
+Envio.belongsTo(Usuario, {
+  foreignKey: "transportadorId",
+  as: "transportador",
+});
+Envio.belongsTo(Usuario, {
+  foreignKey: "despachadoPorId",
+  as: "despachadoPor",
+});
+
+Envio.hasMany(Lacre, { foreignKey: "envioId", as: "lacres" });
+Lacre.belongsTo(Envio, { foreignKey: "envioId", as: "envio" });
+Lacre.belongsTo(Usuario, { foreignKey: "conferidoPorId", as: "conferidoPor" });
+
+Lacre.hasMany(ItemLacre, { foreignKey: "lacreId", as: "itens" });
+ItemLacre.belongsTo(Lacre, { foreignKey: "lacreId", as: "lacre" });
+ItemLacre.belongsTo(Produto, { foreignKey: "produtoId", as: "produto" });
+
 export {
   Usuario,
   Loja,
@@ -562,5 +585,8 @@ export {
   EstoquePecaFuncionario,
   MovimentacaoPeca,
   ManutencaoPeca,
+  Envio,
+  Lacre,
+  ItemLacre,
 };
 
