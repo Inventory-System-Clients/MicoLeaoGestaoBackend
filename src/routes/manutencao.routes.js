@@ -4,7 +4,9 @@ import {
   criarManutencao,
   listarFuncionariosManutencao,
   listarManutencoes,
+  listarPecasUsadasManutencao,
   obterHistoricoMaquina,
+  registrarUsoPecaManutencao,
 } from "../controllers/manutencaoController.js";
 import {
   autenticar,
@@ -33,6 +35,12 @@ router.patch(
   "/:id/status",
   registrarLog("ATUALIZAR_STATUS_MANUTENCAO", "Manutencao"),
   atualizarStatusManutencao,
+);
+router.get("/:id/pecas", listarPecasUsadasManutencao);
+router.post(
+  "/:id/pecas",
+  registrarLog("REGISTRAR_USO_PECA", "ManutencaoPeca"),
+  registrarUsoPecaManutencao,
 );
 
 export default router;

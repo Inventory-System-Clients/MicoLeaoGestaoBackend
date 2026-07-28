@@ -1,11 +1,14 @@
 import { Op } from "sequelize";
 import { sequelize } from "../database/connection.js";
 import {
+  EstoquePecaFuncionario,
   GastoVariavel,
   Loja,
   Maquina,
   Manutencao,
+  ManutencaoPeca,
   ManutencaoUsuario,
+  Peca,
   Usuario,
 } from "../models/index.js";
 import { normalizarStatusOperacao } from "./maquinaController.js";
@@ -48,7 +51,24 @@ const includeAdmin = [
     as: "maquina",
     attributes: ["id", "codigo", "nome", "tipo", "statusOperacao"],
   },
+  {
+    model: ManutencaoPeca,
+    as: "pecasUsadas",
+    include: [
+      { model: Peca, as: "peca", attributes: ["id", "codigo", "nome", "unidade"] },
+      { model: Usuario, as: "usuario", attributes: ["id", "nome"] },
+    ],
+  },
 ];
+
+// Mesmo critério usado para atualizar status: admin/dev, o responsável ou
+// quem está na lista de funcionários permitidos da manutenção.
+const usuarioPodeAgirNaManutencao = (manutencao, usuario) =>
+  ["ADMIN", "DESENVOLVEDOR"].includes(usuario.role) ||
+  manutencao.responsavelId === usuario.id ||
+  (manutencao.funcionariosPermitidos || []).some(
+    (permitido) => permitido.id === usuario.id,
+  );
 
 // Recalcula o statusOperacao da máquina a partir das manutenções em aberto.
 const sincronizarStatusMaquina = async (maquinaId, transaction) => {
@@ -353,6 +373,18 @@ export const listarManutencoes = async (req, res) => {
           as: "maquina",
           attributes: ["id", "codigo", "nome", "tipo", "statusOperacao"],
         },
+        {
+          model: ManutencaoPeca,
+          as: "pecasUsadas",
+          include: [
+            {
+              model: Peca,
+              as: "peca",
+              attributes: ["id", "codigo", "nome", "unidade"],
+            },
+            { model: Usuario, as: "usuario", attributes: ["id", "nome"] },
+          ],
+        },
       ];
     } else {
       if (status && STATUS_VALIDOS.includes(status)) {
@@ -432,12 +464,10 @@ export const atualizarStatusManutencao = async (req, res) => {
       return res.status(404).json({ error: "Manutenção não encontrada" });
     }
 
-    const usuarioPermitido =
-      ["ADMIN", "DESENVOLVEDOR"].includes(req.usuario.role) ||
-      manutencao.responsavelId === req.usuario.id ||
-      manutencao.funcionariosPermitidos.some(
-        (usuario) => usuario.id === req.usuario.id,
-      );
+    const usuarioPermitido = usuarioPodeAgirNaManutencao(
+      manutencao,
+      req.usuario,
+    );
 
     if (!usuarioPermitido) {
       return res.status(403).json({
@@ -472,6 +502,125 @@ export const atualizarStatusManutencao = async (req, res) => {
   } catch (error) {
     console.error("Erro ao atualizar status da manutenção:", error);
     res.status(500).json({ error: "Erro ao atualizar status da manutenção" });
+  }
+};
+
+export const listarPecasUsadasManutencao = async (req, res) => {
+  try {
+    const manutencao = await Manutencao.findByPk(req.params.id);
+
+    if (!manutencao) {
+      return res.status(404).json({ error: "Manutenção não encontrada" });
+    }
+
+    const pecasUsadas = await ManutencaoPeca.findAll({
+      where: { manutencaoId: req.params.id },
+      include: [
+        { model: Peca, as: "peca", attributes: ["id", "codigo", "nome", "unidade"] },
+        { model: Usuario, as: "usuario", attributes: ["id", "nome"] },
+      ],
+      order: [["dataUso", "DESC"]],
+    });
+
+    res.json(pecasUsadas);
+  } catch (error) {
+    console.error("Erro ao listar peças usadas na manutenção:", error);
+    res.status(500).json({ error: "Erro ao listar peças usadas na manutenção" });
+  }
+};
+
+export const registrarUsoPecaManutencao = async (req, res) => {
+  const transaction = await sequelize.transaction();
+
+  try {
+    const { pecaId, quantidade, observacao } = req.body;
+    const quantidadeNumerica = Number(quantidade);
+
+    if (!pecaId) {
+      await transaction.rollback();
+      return res.status(400).json({ error: "Selecione a peça utilizada" });
+    }
+
+    if (!Number.isInteger(quantidadeNumerica) || quantidadeNumerica <= 0) {
+      await transaction.rollback();
+      return res
+        .status(400)
+        .json({ error: "Informe uma quantidade válida (inteiro maior que zero)" });
+    }
+
+    const manutencao = await Manutencao.findByPk(req.params.id, {
+      include: [
+        {
+          model: Usuario,
+          as: "funcionariosPermitidos",
+          attributes: ["id"],
+          through: { attributes: [] },
+        },
+      ],
+      transaction,
+    });
+
+    if (!manutencao) {
+      await transaction.rollback();
+      return res.status(404).json({ error: "Manutenção não encontrada" });
+    }
+
+    if (!usuarioPodeAgirNaManutencao(manutencao, req.usuario)) {
+      await transaction.rollback();
+      return res.status(403).json({
+        error: "Você não tem permissão para registrar uso de peça nesta manutenção",
+      });
+    }
+
+    const peca = await Peca.findByPk(pecaId, { transaction });
+    if (!peca) {
+      await transaction.rollback();
+      return res.status(400).json({ error: "Peça informada não encontrada" });
+    }
+
+    const estoqueFuncionario = await EstoquePecaFuncionario.findOne({
+      where: { funcionarioId: req.usuario.id, pecaId },
+      transaction,
+      lock: transaction.LOCK.UPDATE,
+    });
+
+    const disponivel = estoqueFuncionario?.quantidade || 0;
+    if (disponivel < quantidadeNumerica) {
+      await transaction.rollback();
+      return res.status(400).json({
+        error: `Você não tem estoque suficiente dessa peça. Disponível: ${disponivel}, solicitado: ${quantidadeNumerica}.`,
+      });
+    }
+
+    await estoqueFuncionario.update(
+      { quantidade: disponivel - quantidadeNumerica },
+      { transaction },
+    );
+
+    await ManutencaoPeca.create(
+      {
+        manutencaoId: manutencao.id,
+        pecaId,
+        quantidade: quantidadeNumerica,
+        usuarioId: req.usuario.id,
+        observacao: observacao || null,
+      },
+      { transaction },
+    );
+
+    await transaction.commit();
+
+    const manutencaoAtualizada = await Manutencao.findByPk(manutencao.id, {
+      include: includeAdmin,
+    });
+
+    res.status(201).json(manutencaoAtualizada);
+  } catch (error) {
+    await transaction.rollback();
+    console.error("Erro ao registrar uso de peça na manutenção:", error);
+    res
+      .status(500)
+      .json({ error: "Erro ao registrar uso de peça na manutenção" });
   }
 };
 

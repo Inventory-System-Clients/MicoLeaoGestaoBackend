@@ -31,6 +31,7 @@ import desenvolvimentoRoutes from "./desenvolvimento.routes.js";
 import modoSegurancaRoutes from "./modoSeguranca.routes.js";
 import insumoRoutes from "./insumo.routes.js";
 import pedidoPeluciaRoutes from "./pedidoPelucia.routes.js";
+import pecaRoutes from "./peca.routes.js";
 import { bloquearSeModoSegurancaAtivo } from "../middlewares/modoSeguranca.js";
 const router = express.Router();
 
@@ -73,5 +74,6 @@ router.use("/fornecedores", fornecedorRoutes);
 router.use("/desenvolvimento", desenvolvimentoRoutes);
 router.use("/insumos", insumoRoutes);
 router.use("/pedidos-pelucia", pedidoPeluciaRoutes);
+router.use("/pecas", pecaRoutes);
 
 export default router;
