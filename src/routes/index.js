@@ -27,6 +27,7 @@ import assistenteIaRoutes from "./assistenteIa.routes.js";
 import roteiroRoutes from "./roteiro.routes.js";
 import treinamentoRoutes from "./treinamento.routes.js";
 import fornecedorRoutes from "./fornecedor.routes.js";
+import desenvolvimentoRoutes from "./desenvolvimento.routes.js";
 const router = express.Router();
 
 router.use("/auth", authRoutes);
@@ -62,5 +63,6 @@ router.use("/lista-compras-pendentes", listaComprasPendenteRoutes);
 router.use("/roteiros", roteiroRoutes);
 router.use("/treinamentos", treinamentoRoutes);
 router.use("/fornecedores", fornecedorRoutes);
+router.use("/desenvolvimento", desenvolvimentoRoutes);
 
 export default router;

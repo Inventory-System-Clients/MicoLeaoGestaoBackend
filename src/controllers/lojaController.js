@@ -27,7 +27,7 @@ export const listarLojas = async (req, res) => {
     let lojas;
 
     // Se for ADMIN, vê todas as lojas
-    if (req.usuario.role === "ADMIN") {
+    if (["ADMIN", "DESENVOLVEDOR"].includes(req.usuario.role)) {
       lojas = await Loja.findAll({
         include: [
           {

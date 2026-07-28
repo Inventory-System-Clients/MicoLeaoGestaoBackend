@@ -32,6 +32,7 @@ import TreinamentoFeedback from "./TreinamentoFeedback.js";
 import Fornecedor from "./Fornecedor.js";
 import FornecedorProduto from "./FornecedorProduto.js";
 import FornecedorAnexo from "./FornecedorAnexo.js";
+import DesenvolvimentoSugestao from "./DesenvolvimentoSugestao.js";
 // MovimentaÃ§Ã£o de VeÃ­culo -> VeÃ­culo e UsuÃ¡rio
 MovimentacaoVeiculo.belongsTo(Veiculo, {
   as: "veiculo",
@@ -399,6 +400,27 @@ FornecedorAnexo.belongsTo(Fornecedor, {
   as: "fornecedor",
 });
 
+Usuario.hasMany(DesenvolvimentoSugestao, {
+  foreignKey: "criadoPorId",
+  as: "sugestoesDesenvolvimentoCriadas",
+});
+DesenvolvimentoSugestao.belongsTo(Usuario, {
+  foreignKey: "criadoPorId",
+  as: "criadoPor",
+});
+DesenvolvimentoSugestao.belongsTo(Usuario, {
+  foreignKey: "respondidoPorId",
+  as: "respondidoPor",
+});
+DesenvolvimentoSugestao.belongsTo(Usuario, {
+  foreignKey: "desenvolvidoPorId",
+  as: "desenvolvidoPor",
+});
+DesenvolvimentoSugestao.belongsTo(Usuario, {
+  foreignKey: "baixadoPorId",
+  as: "baixadoPor",
+});
+
 
 export {
   Usuario,
@@ -435,5 +457,6 @@ export {
   Fornecedor,
   FornecedorProduto,
   FornecedorAnexo,
+  DesenvolvimentoSugestao,
 };
 

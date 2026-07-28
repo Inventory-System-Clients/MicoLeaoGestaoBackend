@@ -2,6 +2,9 @@ import jwt from "jsonwebtoken";
 import { Usuario } from "../models/index.js";
 import LogAtividade from "../models/LogAtividade.js";
 
+export const isAdminOuDesenvolvedor = (role) =>
+  role === "ADMIN" || role === "DESENVOLVEDOR";
+
 // US01 - Middleware de Autenticação
 export const autenticar = async (req, res, next) => {
   try {
@@ -30,7 +33,10 @@ export const autenticar = async (req, res, next) => {
 // US02 - Middleware de Autorização por Role
 export const autorizarRole = (...rolesPermitidas) => {
   return (req, res, next) => {
-    if (!rolesPermitidas.includes(req.usuario.role)) {
+    const permitido =
+      rolesPermitidas.includes(req.usuario.role) ||
+      (req.usuario.role === "DESENVOLVEDOR" && rolesPermitidas.includes("ADMIN"));
+    if (!permitido) {
       return res.status(403).json({
         error: "Acesso negado. Você não tem permissão para esta ação.",
       });
@@ -46,7 +52,7 @@ export const requireAdmin = (req, res, next) => {
       .status(401)
       .json({ error: "Usuário não autenticado ou token inválido" });
   }
-  if (req.usuario.role !== "ADMIN") {
+  if (!isAdminOuDesenvolvedor(req.usuario.role)) {
     return res
       .status(403)
       .json({ error: "Acesso negado. Você não tem permissão para esta ação." });
@@ -59,7 +65,7 @@ export const verificarPermissaoLoja = (acao = "visualizar") => {
   return async (req, res, next) => {
     try {
       // Admin tem acesso total
-      if (req.usuario.role === "ADMIN") {
+      if (isAdminOuDesenvolvedor(req.usuario.role)) {
         return next();
       }
 

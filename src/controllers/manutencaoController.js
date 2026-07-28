@@ -177,7 +177,7 @@ export const listarManutencoes = async (req, res) => {
     let include = [...includeAdmin];
     const where = {};
 
-    if (req.usuario.role !== "ADMIN") {
+    if (!["ADMIN", "DESENVOLVEDOR"].includes(req.usuario.role)) {
       where.status = "PENDENTE";
       include = [
         {
@@ -268,7 +268,7 @@ export const resolverManutencao = async (req, res) => {
     }
 
     const usuarioPermitido =
-      req.usuario.role === "ADMIN" ||
+      ["ADMIN", "DESENVOLVEDOR"].includes(req.usuario.role) ||
       manutencao.funcionariosPermitidos.some(
         (usuario) => usuario.id === req.usuario.id,
       );
