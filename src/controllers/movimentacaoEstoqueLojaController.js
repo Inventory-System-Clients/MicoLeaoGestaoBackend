@@ -1,6 +1,36 @@
 import MovimentacaoEstoqueLoja from "../models/MovimentacaoEstoqueLoja.js";
 import MovimentacaoEstoqueLojaProduto from "../models/MovimentacaoEstoqueLojaProduto.js";
-import { Loja, Usuario, Produto } from "../models/index.js";
+import { EstoqueLoja, Loja, Usuario, Produto } from "../models/index.js";
+import { sequelize } from "../database/connection.js";
+
+const NOMES_ESTOQUE_CENTRAL = ["Depósito Principal", "Deposito Principal"];
+
+const obterOuCriarEstoqueCentral = async (transaction) => {
+  let estoqueCentral = null;
+
+  for (const nome of NOMES_ESTOQUE_CENTRAL) {
+    estoqueCentral = await Loja.findOne({ where: { nome }, transaction });
+    if (estoqueCentral) break;
+  }
+
+  if (!estoqueCentral) {
+    estoqueCentral = await Loja.create(
+      {
+        nome: "Depósito Principal",
+        endereco: "Depósito Principal",
+        responsavel: "Estoque",
+        ativo: true,
+      },
+      { transaction },
+    );
+  }
+
+  if (!estoqueCentral.ativo) {
+    await estoqueCentral.update({ ativo: true }, { transaction });
+  }
+
+  return estoqueCentral;
+};
 
 // Listar todas as movimentações de estoque de loja
 export const listarMovimentacoesEstoqueLoja = async (req, res) => {
@@ -126,6 +156,160 @@ export const criarMovimentacaoEstoqueLoja = async (req, res) => {
     return res.status(500).json({
       error: "Erro interno ao criar movimentação",
       details: err.message,
+    });
+  }
+};
+
+export const transferirDaGaragem = async (req, res) => {
+  const transaction = await sequelize.transaction();
+
+  try {
+    const { lojaDestinoId, produtos, observacao, dataMovimentacao } = req.body;
+    const usuarioId = req.usuario?.id;
+    const itens = Array.isArray(produtos)
+      ? produtos
+          .map((item) => ({
+            produtoId: item.produtoId,
+            quantidade: Number(item.quantidade),
+          }))
+          .filter(
+            (item) =>
+              item.produtoId &&
+              Number.isInteger(item.quantidade) &&
+              item.quantidade > 0,
+          )
+      : [];
+
+    if (!lojaDestinoId || itens.length === 0) {
+      await transaction.rollback();
+      return res.status(400).json({
+        error: "Loja de destino e produtos válidos são obrigatórios.",
+      });
+    }
+
+    const estoqueCentral = await obterOuCriarEstoqueCentral(transaction);
+    if (String(estoqueCentral.id) === String(lojaDestinoId)) {
+      await transaction.rollback();
+      return res.status(400).json({
+        error: "A loja de destino deve ser diferente do Depósito Principal.",
+      });
+    }
+
+    const lojaDestino = await Loja.findByPk(lojaDestinoId, { transaction });
+    if (!lojaDestino || !lojaDestino.ativo) {
+      await transaction.rollback();
+      return res.status(404).json({ error: "Loja de destino não encontrada." });
+    }
+
+    const quantidadesPorProduto = new Map();
+    itens.forEach((item) => {
+      quantidadesPorProduto.set(
+        item.produtoId,
+        (quantidadesPorProduto.get(item.produtoId) || 0) + item.quantidade,
+      );
+    });
+
+    const itensAgrupados = Array.from(quantidadesPorProduto.entries()).map(
+      ([produtoId, quantidade]) => ({ produtoId, quantidade }),
+    );
+
+    for (const item of itensAgrupados) {
+      const estoqueOrigem = await EstoqueLoja.findOne({
+        where: { lojaId: estoqueCentral.id, produtoId: item.produtoId },
+        transaction,
+        lock: transaction.LOCK.UPDATE,
+      });
+
+      const disponivel = Number(estoqueOrigem?.quantidade || 0);
+      if (disponivel < item.quantidade) {
+        const produto = await Produto.findByPk(item.produtoId, { transaction });
+        await transaction.rollback();
+        return res.status(400).json({
+          error: `Estoque insuficiente no Depósito Principal para ${
+            produto?.nome || "o produto"
+          }. Disponível: ${disponivel}, solicitado: ${item.quantidade}.`,
+        });
+      }
+    }
+
+    const data = dataMovimentacao || new Date();
+    const observacaoTransferencia =
+      observacao || `Transferência para ${lojaDestino.nome}`;
+
+    const movimentacaoOrigem = await MovimentacaoEstoqueLoja.create(
+      {
+        lojaId: estoqueCentral.id,
+        usuarioId,
+        observacao: `${observacaoTransferencia} - saída do Depósito Principal`,
+        dataMovimentacao: data,
+      },
+      { transaction },
+    );
+    const movimentacaoDestino = await MovimentacaoEstoqueLoja.create(
+      {
+        lojaId: lojaDestino.id,
+        usuarioId,
+        observacao: `${observacaoTransferencia} - entrada na loja`,
+        dataMovimentacao: data,
+      },
+      { transaction },
+    );
+
+    for (const item of itensAgrupados) {
+      const estoqueOrigem = await EstoqueLoja.findOne({
+        where: { lojaId: estoqueCentral.id, produtoId: item.produtoId },
+        transaction,
+        lock: transaction.LOCK.UPDATE,
+      });
+
+      await estoqueOrigem.update(
+        { quantidade: Number(estoqueOrigem.quantidade || 0) - item.quantidade },
+        { transaction },
+      );
+
+      const [estoqueDestino] = await EstoqueLoja.findOrCreate({
+        where: { lojaId: lojaDestino.id, produtoId: item.produtoId },
+        defaults: { quantidade: 0 },
+        transaction,
+      });
+
+      await estoqueDestino.update(
+        { quantidade: Number(estoqueDestino.quantidade || 0) + item.quantidade },
+        { transaction },
+      );
+
+      await MovimentacaoEstoqueLojaProduto.bulkCreate(
+        [
+          {
+            movimentacaoEstoqueLojaId: movimentacaoOrigem.id,
+            produtoId: item.produtoId,
+            quantidade: item.quantidade,
+            tipoMovimentacao: "saida",
+          },
+          {
+            movimentacaoEstoqueLojaId: movimentacaoDestino.id,
+            produtoId: item.produtoId,
+            quantidade: item.quantidade,
+            tipoMovimentacao: "entrada",
+          },
+        ],
+        { transaction },
+      );
+    }
+
+    await transaction.commit();
+    return res.status(201).json({
+      message: `Produtos transferidos para ${lojaDestino.nome}.`,
+      origem: { id: estoqueCentral.id, nome: estoqueCentral.nome },
+      destino: { id: lojaDestino.id, nome: lojaDestino.nome },
+      produtos: itensAgrupados,
+    });
+  } catch (error) {
+    if (!transaction.finished) await transaction.rollback();
+    console.error("Erro ao transferir do Depósito Principal:", error);
+    return res.status(500).json({
+      error: "Erro interno ao transferir produtos do Depósito Principal.",
+      details: error.message,
     });
   }
 };

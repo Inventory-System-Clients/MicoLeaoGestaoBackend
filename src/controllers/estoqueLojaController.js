@@ -307,7 +307,7 @@ export const atualizarVariosEstoques = async (req, res) => {
     const erros = [];
 
     for (const item of estoques) {
-      const { produtoId, quantidade, estoqueMinimo } = item;
+      const { produtoId, quantidade, estoqueMinimo, ativo } = item;
 
       if (!produtoId || quantidade === undefined) {
         console.log("Item inválido ignorado:", item);
@@ -328,6 +328,7 @@ export const atualizarVariosEstoques = async (req, res) => {
           defaults: {
             quantidade,
             estoqueMinimo: estoqueMinimo !== undefined ? estoqueMinimo : 0,
+            ativo: ativo !== undefined ? Boolean(ativo) : true,
           },
         });
 
@@ -337,6 +338,9 @@ export const atualizarVariosEstoques = async (req, res) => {
           estoque.quantidade = quantidade;
           if (estoqueMinimo !== undefined) {
             estoque.estoqueMinimo = estoqueMinimo;
+          }
+          if (ativo !== undefined) {
+            estoque.ativo = Boolean(ativo);
           }
           await estoque.save();
           await registrarAuditoriaEstoque({
