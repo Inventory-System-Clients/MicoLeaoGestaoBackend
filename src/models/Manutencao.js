@@ -30,10 +30,40 @@ const Manutencao = sequelize.define(
         key: "id",
       },
     },
+    maquinaId: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      references: {
+        model: "maquinas",
+        key: "id",
+      },
+    },
+    responsavelId: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      references: {
+        model: "usuarios",
+        key: "id",
+      },
+    },
+    tipoProblema: {
+      type: DataTypes.STRING(50),
+      allowNull: true,
+    },
+    prazo: {
+      type: DataTypes.DATEONLY,
+      allowNull: true,
+      comment: "Prazo/data de aviso para conclusão da manutenção",
+    },
     status: {
-      type: DataTypes.ENUM("PENDENTE", "RESOLVIDA"),
+      type: DataTypes.ENUM(
+        "ABERTA",
+        "EM_ANDAMENTO",
+        "AGUARDANDO_PECA",
+        "CONCLUIDA",
+      ),
       allowNull: false,
-      defaultValue: "PENDENTE",
+      defaultValue: "ABERTA",
     },
     criadoPorId: {
       type: DataTypes.UUID,

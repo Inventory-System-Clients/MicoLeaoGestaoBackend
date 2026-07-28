@@ -260,6 +260,24 @@ Manutencao.belongsTo(Loja, {
   as: "loja",
 });
 
+Maquina.hasMany(Manutencao, {
+  foreignKey: "maquinaId",
+  as: "manutencoes",
+});
+Manutencao.belongsTo(Maquina, {
+  foreignKey: "maquinaId",
+  as: "maquina",
+});
+
+Usuario.hasMany(Manutencao, {
+  foreignKey: "responsavelId",
+  as: "manutencoesResponsavel",
+});
+Manutencao.belongsTo(Usuario, {
+  foreignKey: "responsavelId",
+  as: "responsavel",
+});
+
 AlertaMovimentacao.belongsTo(Maquina, {
   foreignKey: "maquinaId",
   as: "maquina",

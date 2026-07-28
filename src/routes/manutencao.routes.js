@@ -1,9 +1,10 @@
 import express from "express";
 import {
+  atualizarStatusManutencao,
   criarManutencao,
   listarFuncionariosManutencao,
   listarManutencoes,
-  resolverManutencao,
+  obterHistoricoMaquina,
 } from "../controllers/manutencaoController.js";
 import {
   autenticar,
@@ -21,6 +22,7 @@ router.get(
   autorizarRole("ADMIN"),
   listarFuncionariosManutencao,
 );
+router.get("/maquina/:maquinaId", obterHistoricoMaquina);
 router.post(
   "/",
   autorizarRole("ADMIN"),
@@ -28,9 +30,9 @@ router.post(
   criarManutencao,
 );
 router.patch(
-  "/:id/resolver",
-  registrarLog("RESOLVER_MANUTENCAO", "Manutencao"),
-  resolverManutencao,
+  "/:id/status",
+  registrarLog("ATUALIZAR_STATUS_MANUTENCAO", "Manutencao"),
+  atualizarStatusManutencao,
 );
 
 export default router;

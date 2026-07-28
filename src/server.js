@@ -239,6 +239,56 @@ const startServer = async () => {
 
     {
       const { DataTypes } = await import("sequelize");
+      const colunasManutencoes =
+        await queryInterface.describeTable("manutencoes");
+
+      const colunasNovasManutencoes = [
+        ["maquinaId", { type: DataTypes.UUID, allowNull: true }],
+        ["responsavelId", { type: DataTypes.UUID, allowNull: true }],
+        ["tipoProblema", { type: DataTypes.STRING(50), allowNull: true }],
+        ["prazo", { type: DataTypes.DATEONLY, allowNull: true }],
+      ];
+
+      for (const [nomeColuna, definicao] of colunasNovasManutencoes) {
+        if (!colunasManutencoes[nomeColuna]) {
+          await queryInterface.addColumn(
+            "manutencoes",
+            nomeColuna,
+            definicao,
+          );
+          console.log(`✅ Coluna ${nomeColuna} adicionada às manutenções!`);
+        }
+      }
+
+      // Nota: o sync() acima já adiciona os novos valores do ENUM sozinho
+      // (ALTER TYPE ... ADD VALUE), então não dá pra usar "o valor novo já
+      // existe" como sinal de que a migração já rodou. Em vez disso,
+      // verificamos se os valores antigos ainda estão no tipo — assim que
+      // o cleanup abaixo rodar uma vez, eles somem e o bloco não roda de novo.
+      const [enumRows] = await sequelize.query(`
+        SELECT e.enumlabel FROM pg_type t
+        JOIN pg_enum e ON t.oid = e.enumtypid
+        WHERE t.typname = 'enum_manutencoes_status'
+      `);
+      const statusLabels = enumRows.map((linha) => linha.enumlabel);
+
+      if (statusLabels.includes("PENDENTE") || statusLabels.includes("RESOLVIDA")) {
+        await sequelize.query(`
+          ALTER TABLE manutencoes ALTER COLUMN status DROP DEFAULT;
+          ALTER TABLE manutencoes ALTER COLUMN status TYPE VARCHAR(30) USING status::text;
+          UPDATE manutencoes SET status = 'ABERTA' WHERE status = 'PENDENTE';
+          UPDATE manutencoes SET status = 'CONCLUIDA' WHERE status = 'RESOLVIDA';
+          DROP TYPE IF EXISTS "enum_manutencoes_status";
+          CREATE TYPE "enum_manutencoes_status" AS ENUM ('ABERTA', 'EM_ANDAMENTO', 'AGUARDANDO_PECA', 'CONCLUIDA');
+          ALTER TABLE manutencoes ALTER COLUMN status TYPE "enum_manutencoes_status" USING status::"enum_manutencoes_status";
+          ALTER TABLE manutencoes ALTER COLUMN status SET DEFAULT 'ABERTA';
+        `);
+        console.log("✅ Status das manutenções migrado para o novo fluxo!");
+      }
+    }
+
+    {
+      const { DataTypes } = await import("sequelize");
       const colunasNovasLojas = [
         [
           "status_operacao",
