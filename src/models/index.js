@@ -26,6 +26,7 @@ import ListaComprasProduto from "./ListaComprasProduto.js";
 import AlertaMovimentacao from "./AlertaMovimentacao.js";
 import Roteiro from "./Roteiro.js";
 import RoteiroItem from "./RoteiroItem.js";
+import RoteiroConfiguracao from "./RoteiroConfiguracao.js";
 // MovimentaÃ§Ã£o de VeÃ­culo -> VeÃ­culo e UsuÃ¡rio
 MovimentacaoVeiculo.belongsTo(Veiculo, {
   as: "veiculo",
@@ -385,5 +386,6 @@ export {
   AlertaMovimentacao,
   Roteiro,
   RoteiroItem,
+  RoteiroConfiguracao,
 };
 

@@ -162,6 +162,44 @@ const startServer = async () => {
 
     {
       const { DataTypes } = await import("sequelize");
+      const tabelas = await queryInterface.showAllTables();
+      if (tabelas.includes("roteiro_itens")) {
+        const colunasRoteiroItens =
+          await queryInterface.describeTable("roteiro_itens");
+        if (!colunasRoteiroItens.concluido) {
+          await queryInterface.addColumn("roteiro_itens", "concluido", {
+            type: DataTypes.BOOLEAN,
+            allowNull: false,
+            defaultValue: false,
+          });
+          console.log("✅ Coluna concluido adicionada aos itens de roteiro!");
+        }
+        if (!colunasRoteiroItens.concluido_em) {
+          await queryInterface.addColumn("roteiro_itens", "concluido_em", {
+            type: DataTypes.DATE,
+            allowNull: true,
+          });
+          console.log("✅ Coluna concluido_em adicionada aos itens de roteiro!");
+        }
+        if (!colunasRoteiroItens.maquinas_concluidas) {
+          await queryInterface.addColumn(
+            "roteiro_itens",
+            "maquinas_concluidas",
+            {
+              type: DataTypes.JSON,
+              allowNull: false,
+              defaultValue: [],
+            },
+          );
+          console.log(
+            "✅ Coluna maquinas_concluidas adicionada aos itens de roteiro!",
+          );
+        }
+      }
+    }
+
+    {
+      const { DataTypes } = await import("sequelize");
       const colunasNovasLojas = [
         [
           "status_operacao",

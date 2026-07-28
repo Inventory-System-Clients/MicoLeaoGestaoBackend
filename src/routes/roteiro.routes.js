@@ -1,11 +1,15 @@
 import express from "express";
 import {
   atualizarItemRoteiro,
+  atualizarConfiguracaoRoteiro,
   atualizarRoteiro,
+  concluirItemRoteiro,
+  concluirMaquinaRoteiro,
   criarItemRoteiro,
   criarRoteiro,
   excluirItemRoteiro,
   excluirRoteiro,
+  obterConfiguracaoRoteiro,
   listarRoteiros,
 } from "../controllers/roteiroController.js";
 import { autenticar, registrarLog, requireAdmin } from "../middlewares/auth.js";
@@ -13,6 +17,14 @@ import { autenticar, registrarLog, requireAdmin } from "../middlewares/auth.js";
 const router = express.Router();
 
 router.get("/", autenticar, listarRoteiros);
+router.get("/configuracao", autenticar, requireAdmin, obterConfiguracaoRoteiro);
+router.put(
+  "/configuracao",
+  autenticar,
+  requireAdmin,
+  registrarLog("EDITAR_CONFIGURACAO_ROTEIRO", "RoteiroConfiguracao"),
+  atualizarConfiguracaoRoteiro,
+);
 router.post(
   "/",
   autenticar,
@@ -48,6 +60,18 @@ router.put(
   requireAdmin,
   registrarLog("EDITAR_ITEM_ROTEIRO", "RoteiroItem"),
   atualizarItemRoteiro,
+);
+router.patch(
+  "/itens/:id/concluir",
+  autenticar,
+  registrarLog("CONCLUIR_ITEM_ROTEIRO", "RoteiroItem"),
+  concluirItemRoteiro,
+);
+router.patch(
+  "/itens/:id/maquinas/:maquinaId/concluir",
+  autenticar,
+  registrarLog("CONCLUIR_MAQUINA_ROTEIRO", "RoteiroItem"),
+  concluirMaquinaRoteiro,
 );
 router.delete(
   "/itens/:id",

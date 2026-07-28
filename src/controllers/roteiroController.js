@@ -1,5 +1,13 @@
 import { Op } from "sequelize";
-import { Loja, Roteiro, RoteiroItem, Usuario, Veiculo } from "../models/index.js";
+import {
+  Loja,
+  Maquina,
+  Roteiro,
+  RoteiroConfiguracao,
+  RoteiroItem,
+  Usuario,
+  Veiculo,
+} from "../models/index.js";
 
 const includeRoteiro = [
   {
@@ -47,8 +55,56 @@ const normalizarDiasSemana = (todosDias, diasSemana) => {
     .filter((dia) => Number.isInteger(dia) && dia >= 0 && dia <= 6);
 };
 
+const obterConfiguracaoReset = async () => {
+  const [config] = await RoteiroConfiguracao.findOrCreate({
+    where: { id: "global" },
+    defaults: {
+      diaSemanaReset: 0,
+      horaReset: "23:59",
+    },
+  });
+  return config;
+};
+
+const montarUltimoHorarioAgendado = (config, agora = new Date()) => {
+  const [hora, minuto] = String(config.horaReset || "23:59")
+    .split(":")
+    .map((parte) => Number.parseInt(parte, 10));
+  const diaSemanaReset = Number(config.diaSemanaReset || 0);
+  const data = new Date(agora);
+  const diferencaDias = (data.getDay() - diaSemanaReset + 7) % 7;
+
+  data.setDate(data.getDate() - diferencaDias);
+  data.setHours(Number.isFinite(hora) ? hora : 23);
+  data.setMinutes(Number.isFinite(minuto) ? minuto : 59);
+  data.setSeconds(0);
+  data.setMilliseconds(0);
+
+  if (data > agora) {
+    data.setDate(data.getDate() - 7);
+  }
+
+  return data;
+};
+
+const aplicarResetSeNecessario = async () => {
+  const config = await obterConfiguracaoReset();
+  const ultimoAgendado = montarUltimoHorarioAgendado(config);
+  const ultimoReset = config.ultimoResetEm ? new Date(config.ultimoResetEm) : null;
+
+  if (!ultimoReset || ultimoReset < ultimoAgendado) {
+    await RoteiroItem.update(
+      { concluido: false, concluidoEm: null, maquinasConcluidas: [] },
+      { where: {} },
+    );
+    await config.update({ ultimoResetEm: ultimoAgendado });
+  }
+};
+
 export const listarRoteiros = async (req, res) => {
   try {
+    await aplicarResetSeNecessario();
+
     const where =
       req.usuario.role === "ADMIN" ? {} : { usuarioId: req.usuario.id, ativo: true };
 
@@ -65,6 +121,37 @@ export const listarRoteiros = async (req, res) => {
   } catch (error) {
     console.error("Erro ao listar roteiros:", error);
     res.status(500).json({ error: "Erro ao listar roteiros" });
+  }
+};
+
+export const obterConfiguracaoRoteiro = async (req, res) => {
+  try {
+    res.json(await obterConfiguracaoReset());
+  } catch (error) {
+    console.error("Erro ao obter configuração de roteiro:", error);
+    res.status(500).json({ error: "Erro ao obter configuração de roteiro" });
+  }
+};
+
+export const atualizarConfiguracaoRoteiro = async (req, res) => {
+  try {
+    const diaSemanaReset = Number.parseInt(req.body.diaSemanaReset, 10);
+    const horaReset = String(req.body.horaReset || "").trim();
+
+    if (!Number.isInteger(diaSemanaReset) || diaSemanaReset < 0 || diaSemanaReset > 6) {
+      return res.status(400).json({ error: "Dia de reset inválido" });
+    }
+
+    if (!/^\d{2}:\d{2}$/.test(horaReset)) {
+      return res.status(400).json({ error: "Horário de reset inválido" });
+    }
+
+    const config = await obterConfiguracaoReset();
+    await config.update({ diaSemanaReset, horaReset });
+    res.json(config);
+  } catch (error) {
+    console.error("Erro ao atualizar configuração de roteiro:", error);
+    res.status(500).json({ error: "Erro ao atualizar configuração de roteiro" });
   }
 };
 
@@ -220,5 +307,83 @@ export const excluirItemRoteiro = async (req, res) => {
   } catch (error) {
     console.error("Erro ao excluir item do roteiro:", error);
     res.status(500).json({ error: "Erro ao excluir item do roteiro" });
+  }
+};
+
+export const concluirItemRoteiro = async (req, res) => {
+  try {
+    const item = await RoteiroItem.findByPk(req.params.id);
+    if (!item) return res.status(404).json({ error: "Item não encontrado" });
+
+    const roteiro = await Roteiro.findByPk(item.roteiroId);
+    if (!roteiro || !usuarioPodeAcessar(req, roteiro)) {
+      return res.status(403).json({ error: "Acesso negado ao roteiro" });
+    }
+
+    const concluido = req.body.concluido !== false;
+    await item.update({
+      concluido,
+      concluidoEm: concluido ? new Date() : null,
+      maquinasConcluidas: concluido ? item.maquinasConcluidas : [],
+    });
+
+    res.json(await obterRoteiroCompleto(item.roteiroId));
+  } catch (error) {
+    console.error("Erro ao concluir item do roteiro:", error);
+    res.status(500).json({ error: "Erro ao concluir item do roteiro" });
+  }
+};
+
+export const concluirMaquinaRoteiro = async (req, res) => {
+  try {
+    const item = await RoteiroItem.findByPk(req.params.id);
+    if (!item) return res.status(404).json({ error: "Item não encontrado" });
+
+    const roteiro = await Roteiro.findByPk(item.roteiroId);
+    if (!roteiro || !usuarioPodeAcessar(req, roteiro)) {
+      return res.status(403).json({ error: "Acesso negado ao roteiro" });
+    }
+
+    if (item.tipo !== "LOJA" || !item.lojaId) {
+      return res.status(400).json({ error: "Este item não é uma loja do roteiro" });
+    }
+
+    const { maquinaId } = req.params;
+    const maquina = await Maquina.findOne({
+      where: { id: maquinaId, lojaId: item.lojaId },
+    });
+    if (!maquina) {
+      return res
+        .status(400)
+        .json({ error: "Máquina não pertence à loja deste roteiro" });
+    }
+
+    const maquinasConcluidas = new Set(
+      (Array.isArray(item.maquinasConcluidas) ? item.maquinasConcluidas : []).map(
+        String,
+      ),
+    );
+    maquinasConcluidas.add(String(maquinaId));
+
+    const maquinasDaLoja = await Maquina.findAll({
+      where: { lojaId: item.lojaId },
+      attributes: ["id"],
+    });
+    const lojaConcluida =
+      maquinasDaLoja.length > 0 &&
+      maquinasDaLoja.every((maquinaLoja) =>
+        maquinasConcluidas.has(String(maquinaLoja.id)),
+      );
+
+    await item.update({
+      maquinasConcluidas: [...maquinasConcluidas],
+      concluido: lojaConcluida,
+      concluidoEm: lojaConcluida ? new Date() : null,
+    });
+
+    res.json(await obterRoteiroCompleto(item.roteiroId));
+  } catch (error) {
+    console.error("Erro ao concluir máquina do roteiro:", error);
+    res.status(500).json({ error: "Erro ao concluir máquina do roteiro" });
   }
 };

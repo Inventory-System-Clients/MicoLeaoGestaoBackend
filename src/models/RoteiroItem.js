@@ -41,6 +41,22 @@ const RoteiroItem = sequelize.define(
       allowNull: false,
       defaultValue: 0,
     },
+    concluido: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
+    concluidoEm: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      field: "concluido_em",
+    },
+    maquinasConcluidas: {
+      type: DataTypes.JSON,
+      allowNull: false,
+      defaultValue: [],
+      field: "maquinas_concluidas",
+    },
   },
   {
     tableName: "roteiro_itens",
