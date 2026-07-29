@@ -4,11 +4,11 @@ import {
   despacharEnvio,
   listarEnvios,
 } from "../controllers/envioController.js";
-import { autenticar, registrarLog, requireAdmin } from "../middlewares/auth.js";
+import { autenticar, autorizarRole, registrarLog } from "../middlewares/auth.js";
 
 const router = express.Router();
 
-router.use(autenticar, requireAdmin);
+router.use(autenticar, autorizarRole("ADMIN", "FUNCIONARIO_ESTOQUE"));
 
 router.get("/", listarEnvios);
 router.post("/", registrarLog("CRIAR_ENVIO", "Envio"), criarEnvio);

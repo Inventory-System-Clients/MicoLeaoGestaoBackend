@@ -93,11 +93,17 @@ export const criarUsuario = async (req, res) => {
     }
 
     // Validar role
-    const roleValida = ["ADMIN", "FUNCIONARIO", "DESENVOLVEDOR"].includes(role);
+    const roleValida = [
+      "ADMIN",
+      "FUNCIONARIO",
+      "DESENVOLVEDOR",
+      "FUNCIONARIO_ESTOQUE",
+    ].includes(role);
     if (!roleValida) {
-      return res
-        .status(400)
-        .json({ error: "Role invalida. Use ADMIN, FUNCIONARIO ou DESENVOLVEDOR" });
+      return res.status(400).json({
+        error:
+          "Role invalida. Use ADMIN, FUNCIONARIO, DESENVOLVEDOR ou FUNCIONARIO_ESTOQUE",
+      });
     }
 
     // Criar usuário
@@ -109,9 +115,10 @@ export const criarUsuario = async (req, res) => {
       role,
     });
 
-    // Se for funcionário e tiver lojas permitidas, criar permissões
+    // Se for funcionário (ou funcionário de estoque) e tiver lojas
+    // permitidas, criar permissões
     if (
-      role === "FUNCIONARIO" &&
+      ["FUNCIONARIO", "FUNCIONARIO_ESTOQUE"].includes(role) &&
       lojasPermitidas &&
       lojasPermitidas.length > 0
     ) {
@@ -173,10 +180,16 @@ export const atualizarUsuario = async (req, res) => {
     }
 
     // Validar role se fornecida
-    if (role && !["ADMIN", "FUNCIONARIO", "DESENVOLVEDOR"].includes(role)) {
-      return res
-        .status(400)
-        .json({ error: "Role invalida. Use ADMIN, FUNCIONARIO ou DESENVOLVEDOR" });
+    if (
+      role &&
+      !["ADMIN", "FUNCIONARIO", "DESENVOLVEDOR", "FUNCIONARIO_ESTOQUE"].includes(
+        role,
+      )
+    ) {
+      return res.status(400).json({
+        error:
+          "Role invalida. Use ADMIN, FUNCIONARIO, DESENVOLVEDOR ou FUNCIONARIO_ESTOQUE",
+      });
     }
 
     // Atualizar dados básicos
@@ -194,9 +207,10 @@ export const atualizarUsuario = async (req, res) => {
       // Remover permissões antigas
       await UsuarioLoja.destroy({ where: { usuarioId: usuario.id } });
 
-      // Adicionar novas permissões (apenas se for FUNCIONARIO)
+      // Adicionar novas permissões (apenas se for FUNCIONARIO ou
+      // FUNCIONARIO_ESTOQUE)
       if (
-        (role || usuario.role) === "FUNCIONARIO" &&
+        ["FUNCIONARIO", "FUNCIONARIO_ESTOQUE"].includes(role || usuario.role) &&
         lojasPermitidas.length > 0
       ) {
         const permissoes = lojasPermitidas.map((lojaId) => ({

@@ -126,6 +126,9 @@ const startServer = async () => {
     await sequelize.query(`
       ALTER TYPE "enum_usuarios_role" ADD VALUE IF NOT EXISTS 'DESENVOLVEDOR';
     `);
+    await sequelize.query(`
+      ALTER TYPE "enum_usuarios_role" ADD VALUE IF NOT EXISTS 'FUNCIONARIO_ESTOQUE';
+    `);
     const colunasMaquinas = await queryInterface.describeTable("maquinas");
     const colunasLojas = await queryInterface.describeTable("lojas");
 

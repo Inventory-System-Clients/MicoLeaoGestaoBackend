@@ -6,14 +6,23 @@ import {
   listarLacresPendentes,
   reabrirLacre,
 } from "../controllers/lacreController.js";
-import { autenticar, registrarLog, requireAdmin } from "../middlewares/auth.js";
+import {
+  autenticar,
+  autorizarRole,
+  registrarLog,
+  requireAdmin,
+} from "../middlewares/auth.js";
 
 const router = express.Router();
 
 router.use(autenticar);
 
 router.get("/pendentes", listarLacresPendentes);
-router.get("/divergentes", requireAdmin, listarLacresDivergentes);
+router.get(
+  "/divergentes",
+  autorizarRole("ADMIN", "FUNCIONARIO_ESTOQUE"),
+  listarLacresDivergentes,
+);
 router.get("/alertas/em-transito", requireAdmin, alertasLacresEmTransito);
 router.patch(
   "/:id/conferir",
@@ -22,7 +31,7 @@ router.patch(
 );
 router.patch(
   "/:id/reabrir",
-  requireAdmin,
+  autorizarRole("ADMIN", "FUNCIONARIO_ESTOQUE"),
   registrarLog("REABRIR_LACRE", "Lacre"),
   reabrirLacre,
 );
