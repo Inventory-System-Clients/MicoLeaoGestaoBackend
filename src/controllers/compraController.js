@@ -234,14 +234,14 @@ export const atualizarStatusCompra = async (req, res) => {
 
     if (status === "RECEBIDO") {
       if (compra.produtoId) {
-        const lojaEscolhida = compra.lojaId
-          ? await Loja.findByPk(compra.lojaId, { transaction })
-          : null;
-        const lojaDestino =
-          lojaEscolhida || (await obterOuCriarEstoqueCentral(transaction));
+        // O produto sempre chega primeiro no Depósito Principal, igual uma
+        // compra de fornecedor comum. Se a compra tem uma loja de destino
+        // (campo "onde será usado"), a ida até a loja precisa passar pelo
+        // envio com lacre, não pode creditar o estoque da loja direto aqui.
+        const estoqueCentral = await obterOuCriarEstoqueCentral(transaction);
 
         const [estoque] = await EstoqueLoja.findOrCreate({
-          where: { lojaId: lojaDestino.id, produtoId: compra.produtoId },
+          where: { lojaId: estoqueCentral.id, produtoId: compra.produtoId },
           defaults: { quantidade: 0 },
           transaction,
         });
