@@ -372,6 +372,7 @@ export const concluirMaquinaRoteiro = async (req, res) => {
     }
 
     const { maquinaId } = req.params;
+    const { movimentacaoId } = req.body;
     const maquina = await Maquina.findOne({
       where: { id: maquinaId, lojaId: item.lojaId },
     });
@@ -381,12 +382,25 @@ export const concluirMaquinaRoteiro = async (req, res) => {
         .json({ error: "Máquina não pertence à loja deste roteiro" });
     }
 
-    const maquinasConcluidas = new Set(
-      (Array.isArray(item.maquinasConcluidas) ? item.maquinasConcluidas : []).map(
-        String,
+    // maquinasConcluidas guarda { maquinaId, movimentacaoId } por máquina,
+    // pra saber exatamente qual movimentação resultou da conclusão (caso a
+    // mesma máquina apareça de novo no roteiro, "a última movimentação da
+    // máquina" pegaria a errada). Registros antigos (só o id em texto) ainda
+    // são aceitos e migrados de forma transparente aqui.
+    const listaAtual = Array.isArray(item.maquinasConcluidas)
+      ? item.maquinasConcluidas
+      : [];
+    const mapaConcluidas = new Map(
+      listaAtual.map((registro) =>
+        typeof registro === "string"
+          ? [registro, null]
+          : [String(registro.maquinaId), registro.movimentacaoId ?? null],
       ),
     );
-    maquinasConcluidas.add(String(maquinaId));
+    mapaConcluidas.set(
+      String(maquinaId),
+      movimentacaoId ? String(movimentacaoId) : null,
+    );
 
     const maquinasDaLoja = await Maquina.findAll({
       where: { lojaId: item.lojaId },
@@ -395,11 +409,13 @@ export const concluirMaquinaRoteiro = async (req, res) => {
     const lojaConcluida =
       maquinasDaLoja.length > 0 &&
       maquinasDaLoja.every((maquinaLoja) =>
-        maquinasConcluidas.has(String(maquinaLoja.id)),
+        mapaConcluidas.has(String(maquinaLoja.id)),
       );
 
     await item.update({
-      maquinasConcluidas: [...maquinasConcluidas],
+      maquinasConcluidas: [...mapaConcluidas.entries()].map(
+        ([maquinaId, movimentacaoId]) => ({ maquinaId, movimentacaoId }),
+      ),
       concluido: lojaConcluida,
       concluidoEm: lojaConcluida ? new Date() : null,
     });
