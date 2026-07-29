@@ -77,6 +77,42 @@ const RegistroDinheiro = sequelize.define(
       type: DataTypes.TEXT,
       allowNull: true,
     },
+    valorBlink: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: true,
+      defaultValue: 0,
+      comment: "Valor manual da maquininha Blink",
+    },
+    valorEsperadoSistema: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: true,
+      comment: "Fichas das movimentações do período x valor da ficha",
+    },
+    diferenca: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: true,
+      comment: "Valor contado (dinheiro+cartão/pix+blink) - valor esperado pelo sistema",
+    },
+    contadoPorId: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      references: {
+        model: "usuarios",
+        key: "id",
+      },
+    },
+    conferidoPorId: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      references: {
+        model: "usuarios",
+        key: "id",
+      },
+    },
+    comprovanteUrl: {
+      type: DataTypes.STRING(700),
+      allowNull: true,
+    },
   },
   {
     tableName: "registro_dinheiro",

@@ -541,6 +541,17 @@ Lacre.hasMany(ItemLacre, { foreignKey: "lacreId", as: "itens" });
 ItemLacre.belongsTo(Lacre, { foreignKey: "lacreId", as: "lacre" });
 ItemLacre.belongsTo(Produto, { foreignKey: "produtoId", as: "produto" });
 
+RegistroDinheiro.belongsTo(Loja, { foreignKey: "lojaId", as: "loja" });
+RegistroDinheiro.belongsTo(Maquina, { foreignKey: "maquinaId", as: "maquina" });
+RegistroDinheiro.belongsTo(Usuario, {
+  foreignKey: "contadoPorId",
+  as: "contadoPor",
+});
+RegistroDinheiro.belongsTo(Usuario, {
+  foreignKey: "conferidoPorId",
+  as: "conferidoPor",
+});
+
 export {
   Usuario,
   Loja,

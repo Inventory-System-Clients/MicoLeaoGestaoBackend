@@ -997,6 +997,116 @@ export const alertasEstoque = async (req, res) => {
   }
 };
 
+const DIAS_SEM_MOVIMENTACAO_ALERTA = 15;
+
+// --- ALERTA: MÁQUINA SEM MOVIMENTAÇÃO RECENTE ---
+export const alertasMaquinaParada = async (req, res) => {
+  try {
+    const maquinas = await Maquina.findAll({
+      where: { ativo: true, lojaId: { [Op.ne]: null } },
+      include: [{ model: Loja, as: "loja", attributes: ["id", "nome"] }],
+    });
+
+    const agora = new Date();
+    const alertas = [];
+
+    for (const maquina of maquinas) {
+      const ultimaMovimentacao = await Movimentacao.findOne({
+        where: { maquinaId: maquina.id },
+        order: [["dataColeta", "DESC"]],
+      });
+
+      const ultimaData = ultimaMovimentacao?.dataColeta
+        ? new Date(ultimaMovimentacao.dataColeta)
+        : null;
+      const diasSemMovimentacao = ultimaData
+        ? Math.floor((agora - ultimaData) / (1000 * 60 * 60 * 24))
+        : null;
+
+      if (
+        diasSemMovimentacao === null ||
+        diasSemMovimentacao >= DIAS_SEM_MOVIMENTACAO_ALERTA
+      ) {
+        alertas.push({
+          maquina: {
+            id: maquina.id,
+            codigo: maquina.codigo,
+            nome: maquina.nome,
+            loja: maquina.loja?.nome,
+          },
+          loja: maquina.loja
+            ? { id: maquina.loja.id, nome: maquina.loja.nome }
+            : null,
+          diasSemMovimentacao,
+          ultimaMovimentacao: ultimaData,
+          mensagem:
+            diasSemMovimentacao === null
+              ? "Nenhuma movimentação registrada"
+              : `Sem movimentação há ${diasSemMovimentacao} dias`,
+          createdAt: ultimaData,
+        });
+      }
+    }
+
+    alertas.sort(
+      (a, b) => (b.diasSemMovimentacao ?? Infinity) - (a.diasSemMovimentacao ?? Infinity),
+    );
+
+    res.json({ totalAlertas: alertas.length, alertas });
+  } catch (error) {
+    console.error("Erro ao buscar alertas de máquina parada:", error);
+    res
+      .status(500)
+      .json({ error: "Erro ao buscar alertas de máquina parada" });
+  }
+};
+
+const DIAS_ANTECEDENCIA_EXTINTOR = 30;
+
+// --- ALERTA: EXTINTOR VENCENDO ---
+export const alertasExtintor = async (req, res) => {
+  try {
+    const lojas = await Loja.findAll({
+      where: {
+        ativo: true,
+        dataVencimentoExtintor: { [Op.ne]: null },
+      },
+      attributes: ["id", "nome", "dataVencimentoExtintor"],
+    });
+
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+    const limite = new Date(hoje);
+    limite.setDate(limite.getDate() + DIAS_ANTECEDENCIA_EXTINTOR);
+
+    const alertas = lojas
+      .filter((loja) => new Date(loja.dataVencimentoExtintor) <= limite)
+      .map((loja) => {
+        const vencimento = new Date(loja.dataVencimentoExtintor);
+        const diasRestantes = Math.floor(
+          (vencimento - hoje) / (1000 * 60 * 60 * 24),
+        );
+
+        return {
+          loja: { id: loja.id, nome: loja.nome },
+          titulo: "Extintor vencendo",
+          dataVencimentoExtintor: loja.dataVencimentoExtintor,
+          diasRestantes,
+          mensagem:
+            diasRestantes < 0
+              ? `Extintor vencido há ${Math.abs(diasRestantes)} dias`
+              : `Extintor vence em ${diasRestantes} dias`,
+        };
+      })
+      .sort((a, b) => a.diasRestantes - b.diasRestantes);
+
+    res.json({ totalAlertas: alertas.length, alertas });
+  } catch (error) {
+    console.error("Erro ao buscar alertas de extintor:", error);
+    res.status(500).json({ error: "Erro ao buscar alertas de extintor" });
+  }
+};
+
 // --- PERFORMANCE MÁQUINAS ---
 export const performanceMaquinas = async (req, res) => {
   try {

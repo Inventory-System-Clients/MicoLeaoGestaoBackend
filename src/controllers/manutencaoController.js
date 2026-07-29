@@ -134,6 +134,115 @@ const avaliarRecorrencia = async (maquinaId, tipoProblema, transaction) => {
   return { recorrente: motivos.length > 0, motivos };
 };
 
+const DIAS_ABERTA_SEM_PRAZO_ALERTA = 15;
+
+// --- ALERTA: MANUTENÇÃO EM ABERTO HÁ MUITO TEMPO ---
+export const alertasManutencaoAtrasada = async (req, res) => {
+  try {
+    const manutencoes = await Manutencao.findAll({
+      where: { status: { [Op.in]: STATUS_ABERTOS } },
+      include: [
+        { model: Maquina, as: "maquina", attributes: ["id", "codigo", "nome"] },
+        { model: Loja, as: "loja", attributes: ["id", "nome"] },
+      ],
+    });
+
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+
+    const alertas = manutencoes
+      .map((manutencao) => {
+        const diasAberta = Math.floor(
+          (hoje - new Date(manutencao.createdAt)) / (1000 * 60 * 60 * 24),
+        );
+        const prazoVencido =
+          manutencao.prazo && new Date(manutencao.prazo) < hoje;
+        const abertaSemPrazo =
+          !manutencao.prazo && diasAberta >= DIAS_ABERTA_SEM_PRAZO_ALERTA;
+
+        if (!prazoVencido && !abertaSemPrazo) return null;
+
+        return {
+          id: manutencao.id,
+          titulo: manutencao.titulo,
+          status: manutencao.status,
+          maquina: manutencao.maquina
+            ? {
+                id: manutencao.maquina.id,
+                codigo: manutencao.maquina.codigo,
+                nome: manutencao.maquina.nome,
+              }
+            : null,
+          loja: manutencao.loja
+            ? { id: manutencao.loja.id, nome: manutencao.loja.nome }
+            : null,
+          prazo: manutencao.prazo,
+          diasAberta,
+          mensagem: prazoVencido
+            ? `Prazo vencido (era ${manutencao.prazo})`
+            : `Aberta há ${diasAberta} dias sem prazo definido`,
+          createdAt: manutencao.createdAt,
+        };
+      })
+      .filter(Boolean)
+      .sort((a, b) => b.diasAberta - a.diasAberta);
+
+    res.json({ totalAlertas: alertas.length, alertas });
+  } catch (error) {
+    console.error("Erro ao buscar alertas de manutenção atrasada:", error);
+    res
+      .status(500)
+      .json({ error: "Erro ao buscar alertas de manutenção atrasada" });
+  }
+};
+
+// --- ALERTA: MANUTENÇÃO REPETIDA (MÁQUINAS COM MANUTENÇÃO EM ABERTO) ---
+export const alertasManutencaoRecorrente = async (req, res) => {
+  try {
+    const manutencoesAbertas = await Manutencao.findAll({
+      where: { status: { [Op.in]: STATUS_ABERTOS }, maquinaId: { [Op.ne]: null } },
+      include: [
+        { model: Maquina, as: "maquina", attributes: ["id", "codigo", "nome"] },
+      ],
+    });
+
+    const maquinasVistas = new Set();
+    const alertas = [];
+
+    for (const manutencao of manutencoesAbertas) {
+      if (maquinasVistas.has(manutencao.maquinaId)) continue;
+      maquinasVistas.add(manutencao.maquinaId);
+
+      const { recorrente, motivos } = await avaliarRecorrencia(
+        manutencao.maquinaId,
+        manutencao.tipoProblema,
+      );
+
+      if (recorrente) {
+        alertas.push({
+          maquina: manutencao.maquina
+            ? {
+                id: manutencao.maquina.id,
+                codigo: manutencao.maquina.codigo,
+                nome: manutencao.maquina.nome,
+              }
+            : null,
+          titulo: "Manutenção recorrente",
+          motivos,
+          mensagem: motivos.join(" "),
+        });
+      }
+    }
+
+    res.json({ totalAlertas: alertas.length, alertas });
+  } catch (error) {
+    console.error("Erro ao buscar alertas de manutenção recorrente:", error);
+    res
+      .status(500)
+      .json({ error: "Erro ao buscar alertas de manutenção recorrente" });
+  }
+};
+
 export const listarFuncionariosManutencao = async (req, res) => {
   try {
     const funcionarios = await Usuario.findAll({

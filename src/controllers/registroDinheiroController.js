@@ -9,6 +9,8 @@ import {
   Movimentacao,
   Maquina,
   Produto,
+  Loja,
+  Usuario,
 } from "../models/index.js";
 
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
@@ -258,6 +260,47 @@ const calcularGastosPeriodo = async (lojaId, inicio, fim) => {
   };
 };
 
+// Valor esperado pelo sistema: fichas das movimentações do período x valor
+// da ficha de cada máquina (já calculado por movimentação em `valorFaturado`).
+const calcularValorEsperadoSistema = async ({
+  lojaId,
+  maquinaId,
+  registrarTotalLoja,
+  inicio,
+  fim,
+}) => {
+  let maquinaIds = [];
+
+  if (registrarTotalLoja) {
+    const maquinas = await Maquina.findAll({
+      where: { lojaId },
+      attributes: ["id"],
+      raw: true,
+    });
+    maquinaIds = maquinas.map((maquina) => maquina.id);
+  } else if (maquinaId) {
+    maquinaIds = [maquinaId];
+  }
+
+  if (maquinaIds.length === 0) return 0;
+
+  const total = await Movimentacao.sum("valorFaturado", {
+    where: {
+      maquinaId: { [Op.in]: maquinaIds },
+      dataColeta: { [Op.between]: [inicio, fim] },
+    },
+  });
+
+  return Number(total || 0);
+};
+
+const includeRegistro = [
+  { model: Loja, as: "loja", attributes: ["id", "nome"] },
+  { model: Maquina, as: "maquina", attributes: ["id", "codigo", "nome"] },
+  { model: Usuario, as: "contadoPor", attributes: ["id", "nome"] },
+  { model: Usuario, as: "conferidoPor", attributes: ["id", "nome"] },
+];
+
 const registroDinheiroController = {
   async criar(req, res) {
     try {
@@ -269,8 +312,11 @@ const registroDinheiroController = {
         fim,
         valorDinheiro,
         valorCartaoPix,
+        valorBlink,
         percentualTaxaCartaoMedia,
         observacoes,
+        conferidoPorId,
+        comprovanteUrl,
         gastosVariaveis = [],
       } = req.body;
 
@@ -299,6 +345,17 @@ const registroDinheiroController = {
         return res
           .status(400)
           .json({ error: "Data fim não pode ser menor que data início." });
+      }
+
+      if (conferidoPorId) {
+        const conferente = await Usuario.findOne({
+          where: { id: conferidoPorId, ativo: true },
+        });
+        if (!conferente) {
+          return res
+            .status(400)
+            .json({ error: "Usuário informado em 'quem conferiu' inválido ou inativo" });
+        }
       }
 
       if (!Array.isArray(gastosVariaveis)) {
@@ -363,17 +420,40 @@ const registroDinheiroController = {
         Math.max(valorCartaoPixNumero - taxaDeCartao, 0).toFixed(2),
       );
 
+      const valorDinheiroNumero = normalizarValorMonetario(valorDinheiro);
+      const valorBlinkNumero = normalizarValorMonetario(valorBlink);
+
+      const valorEsperadoSistema = await calcularValorEsperadoSistema({
+        lojaId: loja,
+        maquinaId: ehRegistroTotalLoja ? null : maquina || null,
+        registrarTotalLoja: ehRegistroTotalLoja,
+        inicio: inicioPeriodo,
+        fim: fimPeriodo,
+      });
+
+      const valorContadoTotal =
+        valorDinheiroNumero + valorCartaoPixNumero + valorBlinkNumero;
+      const diferenca = Number(
+        (valorContadoTotal - valorEsperadoSistema).toFixed(2),
+      );
+
       const dadosRegistro = {
         lojaId: loja,
         maquinaId: ehRegistroTotalLoja ? null : maquina || null,
         registrarTotalLoja: ehRegistroTotalLoja,
         inicio,
         fim,
-        valorDinheiro: normalizarValorMonetario(valorDinheiro),
+        valorDinheiro: valorDinheiroNumero,
         valorCartaoPix: valorCartaoPixNumero,
         valorCartaoPixLiquido: valorCartaoPixLiquidoNumero,
         taxaDeCartao,
         percentualTaxaCartaoMedia: percentualTaxaCartaoMediaNumero,
+        valorBlink: valorBlinkNumero,
+        valorEsperadoSistema: Number(valorEsperadoSistema.toFixed(2)),
+        diferenca,
+        contadoPorId: req.usuario.id,
+        conferidoPorId: conferidoPorId || null,
+        comprovanteUrl: comprovanteUrl || null,
         gastoFixoPeriodo: ehRegistroTotalLoja
           ? gastosPeriodo.gastoFixoPeriodo
           : 0,
@@ -407,6 +487,12 @@ const registroDinheiroController = {
             "gastoProdutosPeriodo",
             "gastoTotalPeriodo",
             "observacoes",
+            "valorBlink",
+            "valorEsperadoSistema",
+            "diferenca",
+            "contadoPorId",
+            "conferidoPorId",
+            "comprovanteUrl",
           ],
           transaction,
         });
@@ -431,7 +517,11 @@ const registroDinheiroController = {
 
         await transaction.commit();
 
-        return res.status(201).json(registro.toJSON());
+        const registroCompleto = await RegistroDinheiro.findByPk(registro.id, {
+          include: includeRegistro,
+        });
+
+        return res.status(201).json(registroCompleto);
       } catch (dbError) {
         await transaction.rollback();
         throw dbError;
@@ -448,12 +538,52 @@ const registroDinheiroController = {
     try {
       const registros = await RegistroDinheiro.findAll({
         order: [["createdAt", "DESC"]],
+        include: includeRegistro,
       });
       return res.json(registros);
     } catch (err) {
       return res
         .status(500)
         .json({ error: "Erro ao buscar registros", details: err.message });
+    }
+  },
+
+  async valorEsperado(req, res) {
+    try {
+      const { lojaId, maquinaId, registrarTotalLoja, inicio, fim } = req.query;
+
+      if (!lojaId || !inicio || !fim) {
+        return res
+          .status(400)
+          .json({ error: "lojaId, inicio e fim são obrigatórios" });
+      }
+
+      const inicioPeriodo = new Date(inicio);
+      const fimPeriodo = new Date(fim);
+
+      if (
+        Number.isNaN(inicioPeriodo.getTime()) ||
+        Number.isNaN(fimPeriodo.getTime())
+      ) {
+        return res.status(400).json({ error: "Período inválido" });
+      }
+
+      const valorEsperadoSistema = await calcularValorEsperadoSistema({
+        lojaId,
+        maquinaId: maquinaId || null,
+        registrarTotalLoja: registrarTotalLoja === "true",
+        inicio: inicioPeriodo,
+        fim: fimPeriodo,
+      });
+
+      return res.json({
+        valorEsperadoSistema: Number(valorEsperadoSistema.toFixed(2)),
+      });
+    } catch (err) {
+      return res.status(500).json({
+        error: "Erro ao calcular valor esperado",
+        details: err.message,
+      });
     }
   },
 };

@@ -314,7 +314,32 @@ const startServer = async () => {
       }
     }
 
+    {
+      const { DataTypes } = await import("sequelize");
+      const colunasRegistroDinheiro = await queryInterface.describeTable(
+        "registro_dinheiro",
+      );
 
+      const colunasNovasRegistroDinheiro = [
+        ["valorBlink", { type: DataTypes.DECIMAL(10, 2), allowNull: true, defaultValue: 0 }],
+        ["valorEsperadoSistema", { type: DataTypes.DECIMAL(10, 2), allowNull: true }],
+        ["diferenca", { type: DataTypes.DECIMAL(10, 2), allowNull: true }],
+        ["contadoPorId", { type: DataTypes.UUID, allowNull: true }],
+        ["conferidoPorId", { type: DataTypes.UUID, allowNull: true }],
+        ["comprovanteUrl", { type: DataTypes.STRING(700), allowNull: true }],
+      ];
+
+      for (const [nomeColuna, definicao] of colunasNovasRegistroDinheiro) {
+        if (!colunasRegistroDinheiro[nomeColuna]) {
+          await queryInterface.addColumn(
+            "registro_dinheiro",
+            nomeColuna,
+            definicao,
+          );
+          console.log(`✅ Coluna ${nomeColuna} adicionada a registro_dinheiro!`);
+        }
+      }
+    }
 
     await sequelize.query(`
       ALTER TYPE "enum_movimentacoes_veiculos_tipo" ADD VALUE IF NOT EXISTS 'abastecimento';

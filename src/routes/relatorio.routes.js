@@ -2,6 +2,8 @@ import express from "express";
 import {
   balançoSemanal,
   alertasEstoque,
+  alertasMaquinaParada,
+  alertasExtintor,
   performanceMaquinas,
   relatorioImpressao,
   relatorioTodasLojas,
@@ -61,6 +63,18 @@ router.get(
   autenticar,
   autorizarRole("ADMIN"),
   alertasEstoque,
+);
+router.get(
+  "/alertas-maquina-parada",
+  autenticar,
+  autorizarRole("ADMIN"),
+  alertasMaquinaParada,
+);
+router.get(
+  "/alertas-extintor",
+  autenticar,
+  autorizarRole("ADMIN"),
+  alertasExtintor,
 );
 router.get(
   "/performance-maquinas",

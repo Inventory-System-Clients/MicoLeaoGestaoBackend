@@ -1,5 +1,6 @@
 import express from "express";
 import {
+  alertasLacresEmTransito,
   conferirLacre,
   listarLacresDivergentes,
   listarLacresPendentes,
@@ -13,6 +14,7 @@ router.use(autenticar);
 
 router.get("/pendentes", listarLacresPendentes);
 router.get("/divergentes", requireAdmin, listarLacresDivergentes);
+router.get("/alertas/em-transito", requireAdmin, alertasLacresEmTransito);
 router.patch(
   "/:id/conferir",
   registrarLog("CONFERIR_LACRE", "Lacre"),

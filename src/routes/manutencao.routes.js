@@ -1,5 +1,7 @@
 import express from "express";
 import {
+  alertasManutencaoAtrasada,
+  alertasManutencaoRecorrente,
   atualizarStatusManutencao,
   criarManutencao,
   listarFuncionariosManutencao,
@@ -25,6 +27,16 @@ router.get(
   listarFuncionariosManutencao,
 );
 router.get("/maquina/:maquinaId", obterHistoricoMaquina);
+router.get(
+  "/alertas/atrasadas",
+  autorizarRole("ADMIN"),
+  alertasManutencaoAtrasada,
+);
+router.get(
+  "/alertas/recorrentes",
+  autorizarRole("ADMIN"),
+  alertasManutencaoRecorrente,
+);
 router.post(
   "/",
   autorizarRole("ADMIN"),

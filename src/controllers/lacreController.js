@@ -66,6 +66,66 @@ export const listarLacresPendentes = async (req, res) => {
   }
 };
 
+// --- ALERTA: CARRINHO/LACRE ENVIADO E NÃO CONFERIDO ---
+export const alertasLacresEmTransito = async (req, res) => {
+  try {
+    const lacres = await Lacre.findAll({
+      where: { status: "EM_TRANSITO" },
+      include: [
+        {
+          model: Envio,
+          as: "envio",
+          include: [
+            { model: Loja, as: "lojaDestino", attributes: ["id", "nome"] },
+            { model: Usuario, as: "transportador", attributes: ["id", "nome"] },
+          ],
+        },
+        {
+          model: ItemLacre,
+          as: "itens",
+          include: [{ model: Produto, as: "produto", attributes: ["id", "nome"] }],
+        },
+      ],
+    });
+
+    const agora = new Date();
+
+    const alertas = lacres
+      .map((lacre) => {
+        const despachadoEm = lacre.envio?.despachadoEm
+          ? new Date(lacre.envio.despachadoEm)
+          : null;
+        const diasEmTransito = despachadoEm
+          ? Math.floor((agora - despachadoEm) / (1000 * 60 * 60 * 24))
+          : null;
+
+        return {
+          titulo: `Lacre ${lacre.numero}`,
+          numero: lacre.numero,
+          loja: lacre.envio?.lojaDestino
+            ? { id: lacre.envio.lojaDestino.id, nome: lacre.envio.lojaDestino.nome }
+            : null,
+          transportador: lacre.envio?.transportador?.nome,
+          despachadoEm: lacre.envio?.despachadoEm,
+          diasEmTransito,
+          mensagem:
+            diasEmTransito !== null
+              ? `Em trânsito há ${diasEmTransito} dia(s), aguardando conferência`
+              : "Aguardando conferência",
+          createdAt: lacre.envio?.despachadoEm,
+        };
+      })
+      .sort((a, b) => (b.diasEmTransito ?? 0) - (a.diasEmTransito ?? 0));
+
+    res.json({ totalAlertas: alertas.length, alertas });
+  } catch (error) {
+    console.error("Erro ao buscar alertas de lacres em trânsito:", error);
+    res
+      .status(500)
+      .json({ error: "Erro ao buscar alertas de lacres em trânsito" });
+  }
+};
+
 export const listarLacresDivergentes = async (req, res) => {
   try {
     const lacres = await Lacre.findAll({
