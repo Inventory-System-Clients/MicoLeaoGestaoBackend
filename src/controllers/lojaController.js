@@ -1,5 +1,11 @@
 import { Loja, Maquina, UsuarioLoja } from "../models/index.js";
 
+const NOMES_DEPOSITO_PRINCIPAL = ["deposito principal", "depósito principal"];
+const ehDepositoPrincipal = (loja) =>
+  NOMES_DEPOSITO_PRINCIPAL.includes(
+    String(loja?.nome || "").trim().toLowerCase(),
+  );
+
 const VALOR_FICHA_PADRAO_DEFAULT = 2.5;
 
 const normalizarValorFichaPadrao = (valor) => {
@@ -173,6 +179,21 @@ export const atualizarLoja = async (req, res) => {
       });
     }
 
+    if (ehDepositoPrincipal(loja)) {
+      const tentandoRenomear = nome !== undefined && nome !== loja.nome;
+      const ativoFinal =
+        statusOperacao !== undefined
+          ? statusOperacao !== "INATIVA"
+          : ativo ?? loja.ativo;
+
+      if (tentandoRenomear || !ativoFinal) {
+        return res.status(400).json({
+          error:
+            "O Depósito Principal não pode ser renomeado nem desativado — é o estoque central do sistema.",
+        });
+      }
+    }
+
     await loja.update({
       nome: nome ?? loja.nome,
       endereco: endereco ?? loja.endereco,
@@ -208,6 +229,13 @@ export const deletarLoja = async (req, res) => {
 
     if (!loja) {
       return res.status(404).json({ error: "Loja não encontrada" });
+    }
+
+    if (ehDepositoPrincipal(loja)) {
+      return res.status(400).json({
+        error:
+          "O Depósito Principal não pode ser excluído nem desativado — é o estoque central do sistema.",
+      });
     }
 
     // Verificar se já está inativa (segunda tentativa = hard delete)
