@@ -266,7 +266,23 @@ export const deletarUsuario = async (req, res) => {
         .json({ error: "Você não pode deletar sua própria conta" });
     }
 
-    // Soft delete
+    // Segunda tentativa: usuário já estava inativo -> exclusão definitiva
+    if (!usuario.ativo) {
+      try {
+        await usuario.destroy();
+        return res.json({ message: "Usuário excluído permanentemente" });
+      } catch (erroDestroy) {
+        if (erroDestroy.name === "SequelizeForeignKeyConstraintError") {
+          return res.status(400).json({
+            error:
+              "Não é possível excluir: esse usuário tem histórico vinculado no sistema (movimentações, roteiros, registros de dinheiro etc). Ele pode continuar desativado.",
+          });
+        }
+        throw erroDestroy;
+      }
+    }
+
+    // Primeira tentativa: soft delete (desativar)
     await usuario.update({ ativo: false });
 
     res.json({ message: "Usuário desativado com sucesso" });
