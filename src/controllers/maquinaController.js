@@ -2,6 +2,14 @@ import { Maquina, Loja, Movimentacao } from "../models/index.js";
 
 const normalizarLojaId = (lojaId) => (lojaId ? lojaId : null);
 
+const normalizarDatasAuditoria = (datas) => {
+  if (!Array.isArray(datas)) return [];
+  const validas = datas
+    .map((data) => String(data || "").trim())
+    .filter((data) => /^\d{4}-\d{2}-\d{2}$/.test(data));
+  return [...new Set(validas)].sort();
+};
+
 export const normalizarStatusOperacao = ({ lojaId, statusOperacao }) => {
   const status = statusOperacao || (lojaId ? "EM_OPERACAO" : "PARADA");
   if (!lojaId && status === "EM_OPERACAO") return "PARADA";
@@ -88,6 +96,7 @@ export const criarMaquina = async (req, res) => {
       jogadasPremium,
       percentualAlertaEstoque,
       localizacao,
+      datasAuditoria,
     } = req.body;
 
     if (!codigo) {
@@ -121,6 +130,7 @@ export const criarMaquina = async (req, res) => {
       jogadasPremium: jogadasPremium || null,
       percentualAlertaEstoque: percentualAlertaEstoque || 30,
       localizacao,
+      datasAuditoria: normalizarDatasAuditoria(datasAuditoria),
     });
 
     res.locals.entityId = maquina.id;
@@ -157,6 +167,7 @@ export const atualizarMaquina = async (req, res) => {
       percentualAlertaEstoque,
       localizacao,
       ativo,
+      datasAuditoria,
     } = req.body;
 
     // Verificar se novo código já existe em outra máquina
@@ -192,6 +203,10 @@ export const atualizarMaquina = async (req, res) => {
         percentualAlertaEstoque ?? maquina.percentualAlertaEstoque,
       localizacao: localizacao ?? maquina.localizacao,
       ativo: ativo ?? maquina.ativo,
+      datasAuditoria:
+        datasAuditoria !== undefined
+          ? normalizarDatasAuditoria(datasAuditoria)
+          : maquina.datasAuditoria,
     });
 
     res.json(maquina);

@@ -117,6 +117,13 @@ const Maquina = sequelize.define(
       allowNull: true,
       comment: "Posição dentro da loja",
     },
+    datasAuditoria: {
+      type: DataTypes.JSON,
+      allowNull: false,
+      defaultValue: [],
+      field: "datas_auditoria",
+      comment: "Lista de datas (YYYY-MM-DD) em que a máquina passa por auditoria manual",
+    },
     ativo: {
       type: DataTypes.BOOLEAN,
       defaultValue: true,

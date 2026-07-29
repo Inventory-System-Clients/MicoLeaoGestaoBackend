@@ -170,6 +170,14 @@ const startServer = async () => {
             defaultValue: "EM_OPERACAO",
           },
         ],
+        [
+          "datas_auditoria",
+          {
+            type: DataTypes.JSON,
+            allowNull: false,
+            defaultValue: [],
+          },
+        ],
       ];
 
       for (const [nomeColuna, definicao] of colunasNovasMaquinas) {
