@@ -150,6 +150,9 @@ const startServer = async () => {
     await sequelize.query(`
       ALTER TYPE "enum_usuarios_role" ADD VALUE IF NOT EXISTS 'FUNCIONARIO_ESTOQUE';
     `);
+    await sequelize.query(`
+      ALTER TYPE "enum_usuarios_role" ADD VALUE IF NOT EXISTS 'ENTREGADOR';
+    `);
     const colunasMaquinas = await queryInterface.describeTable("maquinas");
     const colunasLojas = await queryInterface.describeTable("lojas");
 
@@ -512,4 +515,3 @@ const iniciarLimpezaAutomatica = async () => {
 startServer();
 
 export default app;
-
