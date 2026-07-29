@@ -6,7 +6,7 @@ import {
   excluirFornecedor,
   listarFornecedores,
 } from "../controllers/fornecedorController.js";
-import { autenticar, registrarLog, requireAdmin } from "../middlewares/auth.js";
+import { autenticar, autorizarRole, registrarLog } from "../middlewares/auth.js";
 
 const router = express.Router();
 
@@ -15,21 +15,21 @@ router.get("/comparacoes", autenticar, compararPrecosFornecedores);
 router.post(
   "/",
   autenticar,
-  requireAdmin,
+  autorizarRole("ADMIN", "FUNCIONARIO_ESTOQUE"),
   registrarLog("CRIAR_FORNECEDOR", "Fornecedor"),
   criarFornecedor,
 );
 router.put(
   "/:id",
   autenticar,
-  requireAdmin,
+  autorizarRole("ADMIN", "FUNCIONARIO_ESTOQUE"),
   registrarLog("EDITAR_FORNECEDOR", "Fornecedor"),
   atualizarFornecedor,
 );
 router.delete(
   "/:id",
   autenticar,
-  requireAdmin,
+  autorizarRole("ADMIN", "FUNCIONARIO_ESTOQUE"),
   registrarLog("EXCLUIR_FORNECEDOR", "Fornecedor"),
   excluirFornecedor,
 );

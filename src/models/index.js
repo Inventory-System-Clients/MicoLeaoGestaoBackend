@@ -20,9 +20,6 @@ import FechamentoMensalRelatorio from "./FechamentoMensalRelatorio.js";
 import Manutencao from "./Manutencao.js";
 import ManutencaoUsuario from "./ManutencaoUsuario.js";
 import Sangria from "./Sangria.js";
-import ListaComprasPendente from "./ListaComprasPendente.js";
-import ListaComprasLoja from "./ListaComprasLoja.js";
-import ListaComprasProduto from "./ListaComprasProduto.js";
 import AlertaMovimentacao from "./AlertaMovimentacao.js";
 import Roteiro from "./Roteiro.js";
 import RoteiroItem from "./RoteiroItem.js";
@@ -44,6 +41,7 @@ import ManutencaoPeca from "./ManutencaoPeca.js";
 import Envio from "./Envio.js";
 import Lacre from "./Lacre.js";
 import ItemLacre from "./ItemLacre.js";
+import Compra from "./Compra.js";
 // MovimentaÃ§Ã£o de VeÃ­culo -> VeÃ­culo e UsuÃ¡rio
 MovimentacaoVeiculo.belongsTo(Veiculo, {
   as: "veiculo",
@@ -334,27 +332,6 @@ Veiculo.hasMany(GastoVariavel, {
   as: "gastosVariaveis",
 });
 
-// Lista de Compras Pendentes
-ListaComprasPendente.hasMany(ListaComprasLoja, {
-  foreignKey: "listaId",
-  as: "lojas",
-  onDelete: "CASCADE",
-});
-ListaComprasLoja.belongsTo(ListaComprasPendente, {
-  foreignKey: "listaId",
-  as: "lista",
-});
-
-ListaComprasLoja.hasMany(ListaComprasProduto, {
-  foreignKey: "listaLojaId",
-  as: "produtos",
-  onDelete: "CASCADE",
-});
-ListaComprasProduto.belongsTo(ListaComprasLoja, {
-  foreignKey: "listaLojaId",
-  as: "listaLoja",
-});
-
 Usuario.hasMany(Roteiro, {
   foreignKey: "usuarioId",
   as: "roteiros",
@@ -541,6 +518,14 @@ Lacre.hasMany(ItemLacre, { foreignKey: "lacreId", as: "itens" });
 ItemLacre.belongsTo(Lacre, { foreignKey: "lacreId", as: "lacre" });
 ItemLacre.belongsTo(Produto, { foreignKey: "produtoId", as: "produto" });
 
+Compra.belongsTo(Produto, { foreignKey: "produtoId", as: "produto" });
+Compra.belongsTo(Insumo, { foreignKey: "insumoId", as: "insumo" });
+Compra.belongsTo(Fornecedor, { foreignKey: "fornecedorId", as: "fornecedor" });
+Compra.belongsTo(Loja, { foreignKey: "lojaId", as: "loja" });
+Compra.belongsTo(Usuario, { foreignKey: "criadoPorId", as: "criadoPor" });
+Compra.belongsTo(Usuario, { foreignKey: "compradorId", as: "comprador" });
+Compra.belongsTo(Usuario, { foreignKey: "recebidoPorId", as: "recebidoPor" });
+
 RegistroDinheiro.belongsTo(Loja, { foreignKey: "lojaId", as: "loja" });
 RegistroDinheiro.belongsTo(Maquina, { foreignKey: "maquinaId", as: "maquina" });
 RegistroDinheiro.belongsTo(Usuario, {
@@ -575,9 +560,6 @@ export {
   Manutencao,
   ManutencaoUsuario,
   Sangria,
-  ListaComprasPendente,
-  ListaComprasLoja,
-  ListaComprasProduto,
   AlertaMovimentacao,
   Roteiro,
   RoteiroItem,
@@ -599,5 +581,6 @@ export {
   Envio,
   Lacre,
   ItemLacre,
+  Compra,
 };
 
