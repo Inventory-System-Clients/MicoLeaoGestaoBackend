@@ -43,17 +43,12 @@ const Roteiro = sequelize.define(
       defaultValue: [],
       field: "dias_semana",
     },
-    diaSemanaReset: {
-      type: DataTypes.INTEGER,
+    resetsAgendados: {
+      type: DataTypes.JSON,
       allowNull: false,
-      defaultValue: 0,
-      field: "dia_semana_reset",
-    },
-    horaReset: {
-      type: DataTypes.STRING(5),
-      allowNull: false,
-      defaultValue: "23:59",
-      field: "hora_reset",
+      defaultValue: [{ diaSemana: 0, hora: "23:59" }],
+      field: "resets_agendados",
+      comment: "Lista de pares { diaSemana (0-6), hora (HH:MM) } de reset",
     },
     ultimoResetEm: {
       type: DataTypes.DATE,

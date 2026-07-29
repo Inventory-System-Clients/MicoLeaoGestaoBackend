@@ -203,6 +203,45 @@ const startServer = async () => {
             console.log(`✅ Coluna ${nomeColuna} adicionada aos roteiros!`);
           }
         }
+
+        // Migração: diaSemanaReset/horaReset (par único) -> resetsAgendados (lista de pares)
+        if (!colunasRoteiros.resets_agendados) {
+          await queryInterface.addColumn("roteiros", "resets_agendados", {
+            type: DataTypes.JSON,
+            allowNull: true,
+          });
+          console.log("✅ Coluna resets_agendados adicionada aos roteiros!");
+
+          if (colunasRoteiros.dia_semana_reset && colunasRoteiros.hora_reset) {
+            const [roteirosAntigos] = await sequelize.query(
+              `SELECT id, dia_semana_reset, hora_reset FROM roteiros WHERE resets_agendados IS NULL`,
+            );
+            for (const linha of roteirosAntigos) {
+              const resetsAgendados = JSON.stringify([
+                {
+                  diaSemana: Number(linha.dia_semana_reset ?? 0),
+                  hora: linha.hora_reset || "23:59",
+                },
+              ]);
+              await sequelize.query(
+                `UPDATE roteiros SET resets_agendados = :resetsAgendados WHERE id = :id`,
+                { replacements: { resetsAgendados, id: linha.id } },
+              );
+            }
+            console.log(
+              `✅ ${roteirosAntigos.length} roteiro(s) migrados para resets_agendados!`,
+            );
+          }
+
+          await sequelize.query(
+            `UPDATE roteiros SET resets_agendados = '[{"diaSemana":0,"hora":"23:59"}]' WHERE resets_agendados IS NULL`,
+          );
+          await queryInterface.changeColumn("roteiros", "resets_agendados", {
+            type: DataTypes.JSON,
+            allowNull: false,
+            defaultValue: [{ diaSemana: 0, hora: "23:59" }],
+          });
+        }
       }
 
       if (tabelas.includes("roteiro_itens")) {

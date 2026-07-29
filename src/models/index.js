@@ -23,7 +23,6 @@ import Sangria from "./Sangria.js";
 import AlertaMovimentacao from "./AlertaMovimentacao.js";
 import Roteiro from "./Roteiro.js";
 import RoteiroItem from "./RoteiroItem.js";
-import RoteiroConfiguracao from "./RoteiroConfiguracao.js";
 import TreinamentoVideo from "./TreinamentoVideo.js";
 import TreinamentoFeedback from "./TreinamentoFeedback.js";
 import Fornecedor from "./Fornecedor.js";
@@ -563,7 +562,6 @@ export {
   AlertaMovimentacao,
   Roteiro,
   RoteiroItem,
-  RoteiroConfiguracao,
   TreinamentoVideo,
   TreinamentoFeedback,
   Fornecedor,
