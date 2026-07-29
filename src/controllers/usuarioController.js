@@ -1,6 +1,37 @@
 import { Usuario, UsuarioLoja, Loja } from "../models/index.js";
 import { Op } from "sequelize";
 
+const permissoesPadraoFuncionario = {
+  visualizar: true,
+  editar: false,
+  registrarMovimentacao: true,
+};
+
+const obterLojasPermitidasPorRole = async (role, lojasPermitidas = []) => {
+  if (role === "FUNCIONARIO_ESTOQUE") {
+    const lojas = await Loja.findAll({ attributes: ["id"] });
+    return lojas.map((loja) => loja.id);
+  }
+
+  if (role === "FUNCIONARIO") {
+    return lojasPermitidas;
+  }
+
+  return [];
+};
+
+const salvarPermissoesLojas = async (usuarioId, lojaIds) => {
+  if (!lojaIds.length) return;
+
+  await UsuarioLoja.bulkCreate(
+    lojaIds.map((lojaId) => ({
+      usuarioId,
+      lojaId,
+      permissoes: permissoesPadraoFuncionario,
+    })),
+  );
+};
+
 // Listar todos os usuários (apenas ADMIN)
 export const listarUsuarios = async (req, res) => {
   try {
@@ -115,25 +146,11 @@ export const criarUsuario = async (req, res) => {
       role,
     });
 
-    // Se for funcionário (ou funcionário de estoque) e tiver lojas
-    // permitidas, criar permissões
-    if (
-      ["FUNCIONARIO", "FUNCIONARIO_ESTOQUE"].includes(role) &&
-      lojasPermitidas &&
-      lojasPermitidas.length > 0
-    ) {
-      const permissoes = lojasPermitidas.map((lojaId) => ({
-        usuarioId: usuario.id,
-        lojaId,
-        permissoes: {
-          visualizar: true,
-          editar: false,
-          registrarMovimentacao: true,
-        },
-      }));
-
-      await UsuarioLoja.bulkCreate(permissoes);
-    }
+    const lojasParaPermitir = await obterLojasPermitidasPorRole(
+      role,
+      lojasPermitidas,
+    );
+    await salvarPermissoesLojas(usuario.id, lojasParaPermitir);
 
     // Buscar usuário completo com permissões
     const usuarioCompleto = await Usuario.findByPk(usuario.id, {
@@ -202,29 +219,18 @@ export const atualizarUsuario = async (req, res) => {
       ativo: ativo ?? usuario.ativo,
     });
 
-    // Se mudou para FUNCIONARIO ou atualizou lojas permitidas
-    if (lojasPermitidas !== undefined) {
+    const roleFinal = role || usuario.role;
+
+    // Se mudou para FUNCIONARIO_ESTOQUE ou atualizou lojas permitidas
+    if (roleFinal === "FUNCIONARIO_ESTOQUE" || lojasPermitidas !== undefined) {
       // Remover permissões antigas
       await UsuarioLoja.destroy({ where: { usuarioId: usuario.id } });
 
-      // Adicionar novas permissões (apenas se for FUNCIONARIO ou
-      // FUNCIONARIO_ESTOQUE)
-      if (
-        ["FUNCIONARIO", "FUNCIONARIO_ESTOQUE"].includes(role || usuario.role) &&
-        lojasPermitidas.length > 0
-      ) {
-        const permissoes = lojasPermitidas.map((lojaId) => ({
-          usuarioId: usuario.id,
-          lojaId,
-          permissoes: {
-            visualizar: true,
-            editar: false,
-            registrarMovimentacao: true,
-          },
-        }));
-
-        await UsuarioLoja.bulkCreate(permissoes);
-      }
+      const lojasParaPermitir = await obterLojasPermitidasPorRole(
+        roleFinal,
+        lojasPermitidas,
+      );
+      await salvarPermissoesLojas(usuario.id, lojasParaPermitir);
     }
 
     // Buscar usuário atualizado com permissões

@@ -11,7 +11,9 @@ import {
 } from "../models/index.js";
 
 const usuarioPodeConferirLoja = async (usuario, lojaId) => {
-  if (["ADMIN", "DESENVOLVEDOR"].includes(usuario.role)) return true;
+  if (["ADMIN", "DESENVOLVEDOR", "FUNCIONARIO_ESTOQUE"].includes(usuario.role)) {
+    return true;
+  }
 
   const permissao = await UsuarioLoja.findOne({
     where: { usuarioId: usuario.id, lojaId },

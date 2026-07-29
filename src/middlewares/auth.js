@@ -64,8 +64,11 @@ export const requireAdmin = (req, res, next) => {
 export const verificarPermissaoLoja = (acao = "visualizar") => {
   return async (req, res, next) => {
     try {
-      // Admin tem acesso total
-      if (isAdminOuDesenvolvedor(req.usuario.role)) {
+      // Admin, desenvolvedor e funcionário de estoque têm acesso total às lojas
+      if (
+        isAdminOuDesenvolvedor(req.usuario.role) ||
+        req.usuario.role === "FUNCIONARIO_ESTOQUE"
+      ) {
         return next();
       }
 
