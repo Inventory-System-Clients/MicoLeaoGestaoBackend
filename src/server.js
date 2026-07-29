@@ -32,26 +32,40 @@ const allowedOrigins = [
   "https://micoleaogestao.selfmachine.com.br",
   "https://grupogk.selfmachine.com.br",
   process.env.FRONTEND_URL,
-].filter(Boolean); // Remove undefined se FRONTEND_URL não estiver definida
+]
+  .filter(Boolean)
+  .map((origin) => origin.replace(/\/$/, "")); // Remove undefined e barra final
 
-app.use(
-  cors({
-    origin: function (origin, callback) {
-      // Permitir requisições sem origin (como mobile apps, Postman, curl)
-      if (!origin) return callback(null, true);
+const isOriginAllowed = (origin) => {
+  if (!origin) return true; // Permitir requisições sem origin (Postman, curl, health checks)
+  if (allowedOrigins.includes("*")) return true;
 
-      // Se estiver na lista de origens permitidas ou for "*"
-      if (allowedOrigins.includes(origin) || allowedOrigins.includes("*")) {
-        callback(null, true);
-      } else {
-        callback(new Error("Not allowed by CORS"));
-      }
-    },
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
-  }),
-);
+  const normalizedOrigin = origin.replace(/\/$/, "");
+  if (allowedOrigins.includes(normalizedOrigin)) return true;
+
+  try {
+    const { protocol, hostname } = new URL(normalizedOrigin);
+    return protocol === "https:" && hostname.endsWith(".selfmachine.com.br");
+  } catch {
+    return false;
+  }
+};
+
+const corsOptions = {
+  origin: function (origin, callback) {
+    if (isOriginAllowed(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error(`Not allowed by CORS: ${origin}`));
+    }
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+};
+
+app.use(cors(corsOptions));
+app.options("*", cors(corsOptions));
 app.use(morgan("dev"));
 app.use(express.json({ limit: "12mb" }));
 app.use(express.urlencoded({ extended: true }));
@@ -103,6 +117,13 @@ app.use("/api", routes);
 // Error handling
 app.use((err, req, res, next) => {
   console.error(err.stack);
+
+  if (isOriginAllowed(req.headers.origin)) {
+    res.header("Access-Control-Allow-Origin", req.headers.origin);
+    res.header("Vary", "Origin");
+    res.header("Access-Control-Allow-Credentials", "true");
+  }
+
   res.status(err.status || 500).json({
     error: {
       message: err.message || "Erro interno do servidor",
@@ -491,5 +512,4 @@ const iniciarLimpezaAutomatica = async () => {
 startServer();
 
 export default app;
-
 
