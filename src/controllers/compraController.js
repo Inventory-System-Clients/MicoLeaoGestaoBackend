@@ -76,13 +76,20 @@ export const listarCompras = async (req, res) => {
       }
     }
 
-    if (valorMin !== undefined || valorMax !== undefined) {
+    const valorMinNumero = Number(valorMin);
+    const valorMaxNumero = Number(valorMax);
+    const temValorMin =
+      valorMin !== undefined && valorMin !== "" && Number.isFinite(valorMinNumero);
+    const temValorMax =
+      valorMax !== undefined && valorMax !== "" && Number.isFinite(valorMaxNumero);
+
+    if (temValorMin || temValorMax) {
       where.valorTotal = {};
-      if (valorMin !== undefined && valorMin !== "") {
-        where.valorTotal[Op.gte] = Number(valorMin);
+      if (temValorMin) {
+        where.valorTotal[Op.gte] = valorMinNumero;
       }
-      if (valorMax !== undefined && valorMax !== "") {
-        where.valorTotal[Op.lte] = Number(valorMax);
+      if (temValorMax) {
+        where.valorTotal[Op.lte] = valorMaxNumero;
       }
     }
 
