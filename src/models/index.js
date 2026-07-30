@@ -32,7 +32,9 @@ import DesenvolvimentoSugestao from "./DesenvolvimentoSugestao.js";
 import ModoSeguranca from "./ModoSeguranca.js";
 import Insumo from "./Insumo.js";
 import InsumoCompra from "./InsumoCompra.js";
+import InsumoConsumo from "./InsumoConsumo.js";
 import PedidoPelucia from "./PedidoPelucia.js";
+import ReceitaInsumo from "./ReceitaInsumo.js";
 import Peca from "./Peca.js";
 import EstoquePecaFuncionario from "./EstoquePecaFuncionario.js";
 import MovimentacaoPeca from "./MovimentacaoPeca.js";
@@ -443,6 +445,15 @@ InsumoCompra.belongsTo(Fornecedor, {
 });
 InsumoCompra.belongsTo(Usuario, { foreignKey: "usuarioId", as: "usuario" });
 
+Insumo.hasMany(InsumoConsumo, { foreignKey: "insumoId", as: "consumos" });
+InsumoConsumo.belongsTo(Insumo, { foreignKey: "insumoId", as: "insumo" });
+InsumoConsumo.belongsTo(Usuario, { foreignKey: "usuarioId", as: "usuario" });
+
+Produto.hasMany(ReceitaInsumo, { foreignKey: "produtoId", as: "receita" });
+ReceitaInsumo.belongsTo(Produto, { foreignKey: "produtoId", as: "produto" });
+Insumo.hasMany(ReceitaInsumo, { foreignKey: "insumoId", as: "receitas" });
+ReceitaInsumo.belongsTo(Insumo, { foreignKey: "insumoId", as: "insumo" });
+
 Produto.hasMany(PedidoPelucia, {
   foreignKey: "produtoId",
   as: "pedidosPelucia",
@@ -459,6 +470,14 @@ PedidoPelucia.belongsTo(Usuario, {
 PedidoPelucia.belongsTo(MovimentacaoEstoqueLoja, {
   foreignKey: "movimentacaoEstoqueLojaId",
   as: "movimentacaoEstoqueLoja",
+});
+PedidoPelucia.hasMany(InsumoConsumo, {
+  foreignKey: "pedidoPeluciaId",
+  as: "insumosConsumidos",
+});
+InsumoConsumo.belongsTo(PedidoPelucia, {
+  foreignKey: "pedidoPeluciaId",
+  as: "pedidoPelucia",
 });
 
 Peca.hasMany(EstoquePecaFuncionario, {
@@ -572,6 +591,8 @@ export {
   ModoSeguranca,
   Insumo,
   InsumoCompra,
+  InsumoConsumo,
+  ReceitaInsumo,
   PedidoPelucia,
   Peca,
   EstoquePecaFuncionario,

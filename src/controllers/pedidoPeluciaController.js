@@ -1,6 +1,8 @@
 import { sequelize } from "../database/connection.js";
 import {
   EstoqueLoja,
+  Insumo,
+  InsumoConsumo,
   MovimentacaoEstoqueLoja,
   MovimentacaoEstoqueLojaProduto,
   PedidoPelucia,
@@ -13,6 +15,11 @@ const includePedido = [
   { model: Produto, as: "produto", attributes: ["id", "codigo", "nome", "categoria", "emoji"] },
   { model: Usuario, as: "criadoPor", attributes: ["id", "nome", "email"] },
   { model: Usuario, as: "concluidoPor", attributes: ["id", "nome", "email"] },
+  {
+    model: InsumoConsumo,
+    as: "insumosConsumidos",
+    include: [{ model: Insumo, as: "insumo", attributes: ["id", "nome", "unidade"] }],
+  },
 ];
 
 export const listarPedidosPelucia = async (req, res) => {
@@ -94,6 +101,48 @@ export const darBaixaPedidoPelucia = async (req, res) => {
     if (pedido.status === "CONCLUIDO") {
       await transaction.rollback();
       return res.status(400).json({ error: "Este pedido já foi concluído" });
+    }
+
+    const insumosBody = Array.isArray(req.body?.insumos) ? req.body.insumos : [];
+
+    for (const item of insumosBody) {
+      const quantidadeNumerica = Number(
+        String(item.quantidade).replace(",", "."),
+      );
+
+      if (!item.insumoId || !Number.isFinite(quantidadeNumerica) || quantidadeNumerica <= 0) {
+        await transaction.rollback();
+        return res
+          .status(400)
+          .json({ error: "Informe um insumo e uma quantidade válida (maior que zero)" });
+      }
+
+      const insumo = await Insumo.findByPk(item.insumoId, { transaction });
+      if (!insumo) {
+        await transaction.rollback();
+        return res.status(400).json({ error: "Insumo informado não encontrado" });
+      }
+
+      const saldoRestante = Number(insumo.quantidadeEstoque) - quantidadeNumerica;
+      if (saldoRestante < 0) {
+        await transaction.rollback();
+        return res.status(400).json({
+          error: `Estoque insuficiente de "${insumo.nome}" (disponível: ${insumo.quantidadeEstoque} ${insumo.unidade || ""})`,
+        });
+      }
+
+      await insumo.update({ quantidadeEstoque: saldoRestante }, { transaction });
+
+      await InsumoConsumo.create(
+        {
+          insumoId: insumo.id,
+          quantidade: quantidadeNumerica,
+          pedidoPeluciaId: pedido.id,
+          usuarioId: req.usuario.id,
+          observacao: `Producao de pelucia - Pedido ${pedido.id}`,
+        },
+        { transaction },
+      );
     }
 
     const estoqueCentral = await obterOuCriarEstoqueCentral(transaction);
