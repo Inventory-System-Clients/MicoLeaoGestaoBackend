@@ -260,6 +260,88 @@ export const enviarPecaFuncionario = async (req, res) => {
   }
 };
 
+export const devolverPecaFuncionario = async (req, res) => {
+  const transaction = await sequelize.transaction();
+
+  try {
+    const { quantidade, observacao } = req.body;
+    const quantidadeNumerica = Number(quantidade);
+    const funcionarioId = req.usuario.id;
+
+    if (req.usuario.role !== "FUNCIONARIO") {
+      await transaction.rollback();
+      return res.status(403).json({
+        error: "Apenas funcionario pode devolver peca pelo proprio carrinho",
+      });
+    }
+
+    if (!Number.isInteger(quantidadeNumerica) || quantidadeNumerica <= 0) {
+      await transaction.rollback();
+      return res
+        .status(400)
+        .json({ error: "Informe uma quantidade valida (inteiro maior que zero)" });
+    }
+
+    const peca = await Peca.findByPk(req.params.id, { transaction });
+    if (!peca || !peca.ativo) {
+      await transaction.rollback();
+      return res.status(404).json({ error: "Peca nao encontrada" });
+    }
+
+    const estoqueFuncionario = await EstoquePecaFuncionario.findOne({
+      where: { funcionarioId, pecaId: peca.id },
+      transaction,
+    });
+
+    if (!estoqueFuncionario || estoqueFuncionario.quantidade < quantidadeNumerica) {
+      await transaction.rollback();
+      return res.status(400).json({
+        error: `Quantidade insuficiente no seu carrinho. Disponivel: ${
+          estoqueFuncionario?.quantidade || 0
+        }, solicitado: ${quantidadeNumerica}.`,
+      });
+    }
+
+    await estoqueFuncionario.update(
+      { quantidade: estoqueFuncionario.quantidade - quantidadeNumerica },
+      { transaction },
+    );
+
+    await peca.update(
+      { quantidadeEstoque: peca.quantidadeEstoque + quantidadeNumerica },
+      { transaction },
+    );
+
+    const devolucao = await MovimentacaoPeca.create(
+      {
+        pecaId: peca.id,
+        funcionarioId,
+        quantidade: -quantidadeNumerica,
+        usuarioId: funcionarioId,
+        observacao: observacao || "Devolucao do funcionario",
+      },
+      { transaction },
+    );
+
+    await transaction.commit();
+
+    const devolucaoCompleta = await MovimentacaoPeca.findByPk(devolucao.id, {
+      include: [
+        { model: Peca, as: "peca", attributes: ["id", "nome", "unidade"] },
+        { model: Usuario, as: "funcionario", attributes: ["id", "nome"] },
+        { model: Usuario, as: "enviadoPor", attributes: ["id", "nome"] },
+      ],
+    });
+
+    res.locals.entityId = devolucao.id;
+    res.status(201).json(devolucaoCompleta);
+  } catch (error) {
+    await transaction.rollback();
+    console.error("Erro ao devolver peca:", error);
+    res.status(500).json({ error: "Erro ao devolver peca" });
+  }
+};
+
 export const listarEnviosPeca = async (req, res) => {
   try {
     const { pecaId, funcionarioId } = req.query;

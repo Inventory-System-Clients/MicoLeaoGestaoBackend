@@ -3,6 +3,7 @@ import {
   atualizarPeca,
   criarPeca,
   deletarPeca,
+  devolverPecaFuncionario,
   enviarPecaFuncionario,
   lancarQuantidadePeca,
   listarEnviosPeca,
@@ -47,6 +48,11 @@ router.post(
   requireAdmin,
   registrarLog("ENVIAR_PECA_FUNCIONARIO", "MovimentacaoPeca"),
   enviarPecaFuncionario,
+);
+router.post(
+  "/:id/devolver",
+  registrarLog("DEVOLVER_PECA_FUNCIONARIO", "MovimentacaoPeca"),
+  devolverPecaFuncionario,
 );
 
 export default router;
