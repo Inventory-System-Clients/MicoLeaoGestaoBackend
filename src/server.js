@@ -309,6 +309,20 @@ const startServer = async () => {
           );
         }
       }
+
+      if (tabelas.includes("compras")) {
+        const colunasCompras = await queryInterface.describeTable("compras");
+        if (!colunasCompras.pecaId) {
+          await queryInterface.addColumn("compras", "pecaId", {
+            type: DataTypes.UUID,
+            allowNull: true,
+            references: { model: "pecas", key: "id" },
+            onUpdate: "CASCADE",
+            onDelete: "SET NULL",
+          });
+          console.log("✅ Coluna pecaId adicionada às compras!");
+        }
+      }
     }
 
     {

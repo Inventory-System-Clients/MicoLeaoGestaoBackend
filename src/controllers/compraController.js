@@ -6,6 +6,7 @@ import {
   Fornecedor,
   Insumo,
   Loja,
+  Peca,
   Produto,
   Usuario,
 } from "../models/index.js";
@@ -16,6 +17,7 @@ const STATUS_VALIDOS = ["PESQUISANDO", "APROVADO", "COMPRADO", "RECEBIDO"];
 const includeCompra = [
   { model: Produto, as: "produto", attributes: ["id", "codigo", "nome"] },
   { model: Insumo, as: "insumo", attributes: ["id", "nome", "unidade"] },
+  { model: Peca, as: "peca", attributes: ["id", "codigo", "nome", "unidade"] },
   { model: Fornecedor, as: "fornecedor", attributes: ["id", "nome"] },
   { model: Loja, as: "loja", attributes: ["id", "nome"] },
   { model: Usuario, as: "criadoPor", attributes: ["id", "nome"] },
@@ -63,6 +65,7 @@ export const listarCompras = async (req, res) => {
         { nomeItem: { [Op.iLike]: termo } },
         { "$produto.nome$": { [Op.iLike]: termo } },
         { "$insumo.nome$": { [Op.iLike]: termo } },
+        { "$peca.nome$": { [Op.iLike]: termo } },
       ];
     }
 
@@ -113,6 +116,7 @@ export const criarCompra = async (req, res) => {
       nomeItem,
       produtoId,
       insumoId,
+      pecaId,
       fornecedorId,
       lojaId,
       descricaoUso,
@@ -128,7 +132,7 @@ export const criarCompra = async (req, res) => {
       return res.status(400).json({ error: "Informe o nome do item" });
     }
 
-    if (produtoId && insumoId) {
+    if ([produtoId, insumoId, pecaId].filter(Boolean).length > 1) {
       return res.status(400).json({
         error: "Selecione ou um produto ou um insumo, não os dois",
       });
@@ -155,10 +159,18 @@ export const criarCompra = async (req, res) => {
       }
     }
 
+    if (pecaId) {
+      const peca = await Peca.findByPk(pecaId);
+      if (!peca) {
+        return res.status(400).json({ error: "Peca informada nao encontrada" });
+      }
+    }
+
     const compra = await Compra.create({
       nomeItem: nomeItem.trim(),
       produtoId: produtoId || null,
       insumoId: insumoId || null,
+      pecaId: pecaId || null,
       fornecedorId: fornecedorId || null,
       lojaId: lojaId || null,
       descricaoUso: descricaoUso || null,
@@ -305,6 +317,17 @@ export const atualizarStatusCompra = async (req, res) => {
                 Number(insumo.quantidadeEstoque) + Number(compra.quantidade),
               custoUnitarioUltimo:
                 compra.valorUnitario ?? insumo.custoUnitarioUltimo,
+            },
+            { transaction },
+          );
+        }
+      } else if (compra.pecaId) {
+        const peca = await Peca.findByPk(compra.pecaId, { transaction });
+        if (peca) {
+          await peca.update(
+            {
+              quantidadeEstoque:
+                Number(peca.quantidadeEstoque || 0) + Number(compra.quantidade),
             },
             { transaction },
           );

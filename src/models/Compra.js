@@ -29,6 +29,14 @@ const Compra = sequelize.define(
         key: "id",
       },
     },
+    pecaId: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      references: {
+        model: "pecas",
+        key: "id",
+      },
+    },
     fornecedorId: {
       type: DataTypes.UUID,
       allowNull: true,

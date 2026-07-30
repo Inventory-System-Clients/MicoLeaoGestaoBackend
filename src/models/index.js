@@ -519,6 +519,7 @@ ItemLacre.belongsTo(Produto, { foreignKey: "produtoId", as: "produto" });
 
 Compra.belongsTo(Produto, { foreignKey: "produtoId", as: "produto" });
 Compra.belongsTo(Insumo, { foreignKey: "insumoId", as: "insumo" });
+Compra.belongsTo(Peca, { foreignKey: "pecaId", as: "peca" });
 Compra.belongsTo(Fornecedor, { foreignKey: "fornecedorId", as: "fornecedor" });
 Compra.belongsTo(Loja, { foreignKey: "lojaId", as: "loja" });
 Compra.belongsTo(Usuario, { foreignKey: "criadoPorId", as: "criadoPor" });
