@@ -1,3 +1,4 @@
+import { Op } from "sequelize";
 import { sequelize } from "../database/connection.js";
 import {
   EstoqueLoja,
@@ -24,7 +25,14 @@ const includePedido = [
 
 export const listarPedidosPelucia = async (req, res) => {
   try {
-    const { status, produtoId } = req.query;
+    const {
+      status,
+      produtoId,
+      dataInicio,
+      dataFim,
+      criadoPorId,
+      concluidoPorId,
+    } = req.query;
     const where = {};
 
     if (status && ["PENDENTE", "CONCLUIDO"].includes(status)) {
@@ -33,6 +41,25 @@ export const listarPedidosPelucia = async (req, res) => {
 
     if (produtoId) {
       where.produtoId = produtoId;
+    }
+
+    if (criadoPorId) {
+      where.criadoPorId = criadoPorId;
+    }
+
+    if (concluidoPorId) {
+      where.concluidoPorId = concluidoPorId;
+    }
+
+    if (dataInicio || dataFim) {
+      const campoData = status === "CONCLUIDO" ? "concluidoEm" : "createdAt";
+      where[campoData] = {};
+      if (dataInicio) {
+        where[campoData][Op.gte] = new Date(`${dataInicio}T00:00:00.000-03:00`);
+      }
+      if (dataFim) {
+        where[campoData][Op.lte] = new Date(`${dataFim}T23:59:59.999-03:00`);
+      }
     }
 
     const pedidos = await PedidoPelucia.findAll({
