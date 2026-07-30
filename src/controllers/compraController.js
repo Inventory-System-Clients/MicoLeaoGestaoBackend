@@ -35,7 +35,16 @@ const calcularValorTotal = (quantidade, valorUnitario, valorTotalInformado) => {
 
 export const listarCompras = async (req, res) => {
   try {
-    const { status, fornecedorId, lojaId } = req.query;
+    const {
+      status,
+      fornecedorId,
+      lojaId,
+      produto,
+      dataInicio,
+      dataFim,
+      valorMin,
+      valorMax,
+    } = req.query;
     const where = {};
 
     if (status) {
@@ -48,9 +57,39 @@ export const listarCompras = async (req, res) => {
     if (fornecedorId) where.fornecedorId = fornecedorId;
     if (lojaId) where.lojaId = lojaId;
 
+    if (produto && produto.trim()) {
+      const termo = `%${produto.trim()}%`;
+      where[Op.or] = [
+        { nomeItem: { [Op.iLike]: termo } },
+        { "$produto.nome$": { [Op.iLike]: termo } },
+        { "$insumo.nome$": { [Op.iLike]: termo } },
+      ];
+    }
+
+    if (dataInicio || dataFim) {
+      where.createdAt = {};
+      if (dataInicio) {
+        where.createdAt[Op.gte] = new Date(`${dataInicio}T00:00:00.000-03:00`);
+      }
+      if (dataFim) {
+        where.createdAt[Op.lte] = new Date(`${dataFim}T23:59:59.999-03:00`);
+      }
+    }
+
+    if (valorMin !== undefined || valorMax !== undefined) {
+      where.valorTotal = {};
+      if (valorMin !== undefined && valorMin !== "") {
+        where.valorTotal[Op.gte] = Number(valorMin);
+      }
+      if (valorMax !== undefined && valorMax !== "") {
+        where.valorTotal[Op.lte] = Number(valorMax);
+      }
+    }
+
     const compras = await Compra.findAll({
       where,
       include: includeCompra,
+      subQuery: false,
       order: [["createdAt", "DESC"]],
     });
 
