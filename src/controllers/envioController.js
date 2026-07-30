@@ -31,7 +31,11 @@ const includeEnvio = [
         model: ItemLacre,
         as: "itens",
         include: [
-          { model: Produto, as: "produto", attributes: ["id", "nome", "codigo"] },
+          {
+            model: Produto,
+            as: "produto",
+            attributes: ["id", "nome", "codigo"],
+          },
         ],
       },
       { model: Usuario, as: "conferidoPor", attributes: ["id", "nome"] },
@@ -41,7 +45,7 @@ const includeEnvio = [
 
 export const listarEnvios = async (req, res) => {
   try {
-    const { lojaDestinoId } = req.query;
+    const { lojaDestinoId, dataInicio, dataFim } = req.query;
     const where = {};
 
     if (req.usuario.role === "ENTREGADOR") {
@@ -50,6 +54,16 @@ export const listarEnvios = async (req, res) => {
 
     if (lojaDestinoId) {
       where.lojaDestinoId = lojaDestinoId;
+    }
+
+    if (dataInicio || dataFim) {
+      where.createdAt = {};
+      if (dataInicio) {
+        where.createdAt[Op.gte] = new Date(dataInicio);
+      }
+      if (dataFim) {
+        where.createdAt[Op.lte] = new Date(dataFim);
+      }
     }
 
     const envios = await Envio.findAll({
@@ -109,7 +123,11 @@ export const criarEnvio = async (req, res) => {
         });
       }
       for (const item of lacre.itens) {
-        if (!item.produtoId || !Number.isInteger(Number(item.quantidade)) || Number(item.quantidade) <= 0) {
+        if (
+          !item.produtoId ||
+          !Number.isInteger(Number(item.quantidade)) ||
+          Number(item.quantidade) <= 0
+        ) {
           await transaction.rollback();
           return res.status(400).json({
             error: `Item inválido no lacre ${lacre.numero}`,
@@ -151,12 +169,10 @@ export const criarEnvio = async (req, res) => {
     });
     if (!transportador) {
       await transaction.rollback();
-      return res
-        .status(400)
-        .json({
-          error:
-            "Transportador informado inválido, inativo ou sem perfil de entregador",
-        });
+      return res.status(400).json({
+        error:
+          "Transportador informado inválido, inativo ou sem perfil de entregador",
+      });
     }
 
     // Aviso (não bloqueante de forma rígida): confere se o saldo central
@@ -202,7 +218,8 @@ export const criarEnvio = async (req, res) => {
       const lacreCriado = await Lacre.create(
         {
           envioId: envio.id,
-          numero: String(lacre.numero || "").trim() || gerarNumeroLacreTemporario(),
+          numero:
+            String(lacre.numero || "").trim() || gerarNumeroLacreTemporario(),
         },
         { transaction },
       );
@@ -236,7 +253,9 @@ export const despacharEnvio = async (req, res) => {
   const transaction = await sequelize.transaction();
 
   try {
-    const lacresInformados = Array.isArray(req.body?.lacres) ? req.body.lacres : [];
+    const lacresInformados = Array.isArray(req.body?.lacres)
+      ? req.body.lacres
+      : [];
     const numerosPorLacreId = new Map(
       lacresInformados.map((lacre) => [
         String(lacre.id),
@@ -280,7 +299,9 @@ export const despacharEnvio = async (req, res) => {
       const numeroInformado = numerosPorLacreId.get(String(lacre.id));
       const numeroFinal =
         numeroInformado ||
-        (lacreTemNumeroTemporario(lacre.numero) ? "" : String(lacre.numero || "").trim());
+        (lacreTemNumeroTemporario(lacre.numero)
+          ? ""
+          : String(lacre.numero || "").trim());
 
       if (!numeroFinal) {
         await transaction.rollback();
