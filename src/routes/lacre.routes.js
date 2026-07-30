@@ -5,6 +5,7 @@ import {
   listarLacresDivergentes,
   listarLacresPendentes,
   reabrirLacre,
+  resolverLacreDivergente,
 } from "../controllers/lacreController.js";
 import {
   autenticar,
@@ -29,6 +30,13 @@ router.patch(
   registrarLog("CONFERIR_LACRE", "Lacre"),
   conferirLacre,
 );
+router.patch(
+  "/:id/resolver",
+  autorizarRole("ADMIN", "FUNCIONARIO_ESTOQUE"),
+  registrarLog("RESOLVER_LACRE_DIVERGENTE", "Lacre"),
+  resolverLacreDivergente,
+);
+
 router.patch(
   "/:id/reabrir",
   autorizarRole("ADMIN", "FUNCIONARIO_ESTOQUE"),

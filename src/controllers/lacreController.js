@@ -11,7 +11,9 @@ import {
 } from "../models/index.js";
 
 const usuarioPodeConferirLoja = async (usuario, lojaId) => {
-  if (["ADMIN", "DESENVOLVEDOR", "FUNCIONARIO_ESTOQUE"].includes(usuario.role)) {
+  if (
+    ["ADMIN", "DESENVOLVEDOR", "FUNCIONARIO_ESTOQUE"].includes(usuario.role)
+  ) {
     return true;
   }
 
@@ -54,7 +56,11 @@ export const listarLacresPendentes = async (req, res) => {
           model: ItemLacre,
           as: "itens",
           include: [
-            { model: Produto, as: "produto", attributes: ["id", "nome", "codigo"] },
+            {
+              model: Produto,
+              as: "produto",
+              attributes: ["id", "nome", "codigo"],
+            },
           ],
         },
       ],
@@ -85,7 +91,9 @@ export const alertasLacresEmTransito = async (req, res) => {
         {
           model: ItemLacre,
           as: "itens",
-          include: [{ model: Produto, as: "produto", attributes: ["id", "nome"] }],
+          include: [
+            { model: Produto, as: "produto", attributes: ["id", "nome"] },
+          ],
         },
       ],
     });
@@ -105,7 +113,10 @@ export const alertasLacresEmTransito = async (req, res) => {
           titulo: `Lacre ${lacre.numero}`,
           numero: lacre.numero,
           loja: lacre.envio?.lojaDestino
-            ? { id: lacre.envio.lojaDestino.id, nome: lacre.envio.lojaDestino.nome }
+            ? {
+                id: lacre.envio.lojaDestino.id,
+                nome: lacre.envio.lojaDestino.nome,
+              }
             : null,
           transportador: lacre.envio?.transportador?.nome,
           despachadoEm: lacre.envio?.despachadoEm,
@@ -261,6 +272,70 @@ export const conferirLacre = async (req, res) => {
     await transaction.rollback();
     console.error("Erro ao conferir lacre:", error);
     res.status(500).json({ error: "Erro ao conferir lacre" });
+  }
+};
+
+export const resolverLacreDivergente = async (req, res) => {
+  const transaction = await sequelize.transaction();
+
+  try {
+    const lacre = await Lacre.findByPk(req.params.id, {
+      include: [
+        { model: Envio, as: "envio" },
+        { model: ItemLacre, as: "itens" },
+      ],
+      transaction,
+    });
+
+    if (!lacre) {
+      await transaction.rollback();
+      return res.status(404).json({ error: "Lacre não encontrado" });
+    }
+
+    if (lacre.status !== "DIVERGENTE") {
+      await transaction.rollback();
+      return res
+        .status(400)
+        .json({ error: "Só é possível resolver um lacre divergente" });
+    }
+
+    for (const item of lacre.itens) {
+      const [estoque] = await EstoqueLoja.findOrCreate({
+        where: {
+          lojaId: lacre.envio.lojaDestinoId,
+          produtoId: item.produtoId,
+        },
+        defaults: { quantidade: 0 },
+        transaction,
+      });
+
+      await estoque.update(
+        { quantidade: Number(estoque.quantidade || 0) + item.quantidade },
+        { transaction },
+      );
+    }
+
+    await lacre.update(
+      {
+        status: "CONFERIDO",
+      },
+      { transaction },
+    );
+
+    await transaction.commit();
+
+    const lacreResolvido = await Lacre.findByPk(lacre.id, {
+      include: [
+        { model: Envio, as: "envio" },
+        { model: ItemLacre, as: "itens" },
+      ],
+    });
+
+    res.json(lacreResolvido);
+  } catch (error) {
+    await transaction.rollback();
+    console.error("Erro ao resolver lacre divergente:", error);
+    res.status(500).json({ error: "Erro ao resolver lacre divergente" });
   }
 };
 
