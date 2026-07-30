@@ -13,6 +13,8 @@ import {
 import { obterOuCriarEstoqueCentral } from "./movimentacaoEstoqueLojaController.js";
 
 const STATUS_VALIDOS = ["PESQUISANDO", "COMPRADO", "RECEBIDO"];
+const normalizarStatusCompra = (status) =>
+  status === "APROVADO" ? "COMPRADO" : status;
 
 const includeCompra = [
   { model: Produto, as: "produto", attributes: ["id", "codigo", "nome"] },
@@ -286,6 +288,20 @@ export const atualizarStatusCompra = async (req, res) => {
     if (compra.status === status) {
       await transaction.rollback();
       return res.status(400).json({ error: "A compra já está com este status" });
+    }
+
+    const statusAtual = normalizarStatusCompra(compra.status);
+    const transicoesPermitidas = {
+      PESQUISANDO: ["COMPRADO"],
+      COMPRADO: ["RECEBIDO"],
+      RECEBIDO: [],
+    };
+
+    if (!transicoesPermitidas[statusAtual]?.includes(status)) {
+      await transaction.rollback();
+      return res.status(400).json({
+        error: "Nao e possivel voltar etapa ou pular o fluxo da compra",
+      });
     }
 
     const dadosAtualizacao = { status };
