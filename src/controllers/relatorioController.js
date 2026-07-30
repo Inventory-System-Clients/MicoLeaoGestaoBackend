@@ -73,6 +73,10 @@ import {
   Maquina,
   Loja,
   Produto,
+  Compra,
+  Fornecedor,
+  Insumo,
+  Peca,
   Usuario,
   AlertaIgnorado,
   RegistroDinheiro,
@@ -1345,6 +1349,65 @@ export const gerarRelatorioImpressaoPorLoja = async ({
     fim,
   );
 
+  const comprasOperacionais = await Compra.findAll({
+    where: {
+      status: "RECEBIDO",
+      lojaId,
+      recebidoEm: { [Op.between]: [inicio, fim] },
+      [Op.or]: [
+        { insumoId: { [Op.ne]: null } },
+        { pecaId: { [Op.ne]: null } },
+      ],
+    },
+    include: [
+      { model: Fornecedor, as: "fornecedor", attributes: ["id", "nome"] },
+      { model: Insumo, as: "insumo", attributes: ["id", "nome", "unidade"] },
+      { model: Peca, as: "peca", attributes: ["id", "nome", "codigo", "unidade"] },
+    ],
+    order: [["recebidoEm", "DESC"]],
+  });
+
+  const comprasOperacionaisDetalhadas = comprasOperacionais.map((compra) => {
+    const quantidade = Number(compra.quantidade || 0);
+    const valorUnitario = Number(compra.valorUnitario || 0);
+    const valorTotalInformado = Number(compra.valorTotal || 0);
+    const valorTotal = Number(
+      (valorTotalInformado > 0 ? valorTotalInformado : quantidade * valorUnitario).toFixed(2),
+    );
+    const tipo = compra.insumoId ? "INSUMO" : "PECA";
+    const itemRelacionado = compra.insumo || compra.peca;
+
+    return {
+      id: compra.id,
+      tipo,
+      nomeItem: compra.nomeItem || itemRelacionado?.nome || "Item",
+      itemNome: itemRelacionado?.nome || compra.nomeItem || "Item",
+      codigo: compra.peca?.codigo || null,
+      quantidade,
+      unidade: compra.unidade || itemRelacionado?.unidade || "un",
+      valorUnitario,
+      valorTotal,
+      fornecedorNome: compra.fornecedor?.nome || "Sem fornecedor",
+      recebidoEm: compra.recebidoEm,
+    };
+  });
+
+  const gastoComprasInsumosPeriodo = Number(
+    comprasOperacionaisDetalhadas
+      .filter((compra) => compra.tipo === "INSUMO")
+      .reduce((acc, compra) => acc + Number(compra.valorTotal || 0), 0)
+      .toFixed(2),
+  );
+  const gastoComprasPecasPeriodo = Number(
+    comprasOperacionaisDetalhadas
+      .filter((compra) => compra.tipo === "PECA")
+      .reduce((acc, compra) => acc + Number(compra.valorTotal || 0), 0)
+      .toFixed(2),
+  );
+  const gastoComprasOperacionaisPeriodo = Number(
+    (gastoComprasInsumosPeriodo + gastoComprasPecasPeriodo).toFixed(2),
+  );
+
   const valoresPorMaquina = {};
   registrosDinheiro.forEach((r) => {
     const maquinaIdRegistro = obterMaquinaIdRegistro(r);
@@ -1598,7 +1661,8 @@ export const gerarRelatorioImpressaoPorLoja = async ({
     (
       Number(gastoFixoTotalPeriodo || 0) +
       Number(gastoVariavelTotalPeriodo || 0) +
-      Number(gastoProdutosTotalPeriodo || 0)
+      Number(gastoProdutosTotalPeriodo || 0) +
+      Number(gastoComprasOperacionaisPeriodo || 0)
     ).toFixed(2),
   );
   const gastoTotalPeriodo = gastoTotalPeriodoCalculado;
@@ -1701,6 +1765,10 @@ export const gerarRelatorioImpressaoPorLoja = async ({
       gastoFixoTotalPeriodo,
       gastoVariavelTotalPeriodo,
       gastoProdutosTotalPeriodo,
+      gastoProdutosVendidosPeriodo: gastoProdutosTotalPeriodo,
+      gastoComprasInsumosPeriodo,
+      gastoComprasPecasPeriodo,
+      gastoComprasOperacionaisPeriodo,
       gastoTotalPeriodo,
       taxaDeCartao: taxaDeCartaoPeriodo,
       percentualTaxaCartaoMedia: percentualTaxaCartaoMediaPeriodo,
@@ -1723,6 +1791,7 @@ export const gerarRelatorioImpressaoPorLoja = async ({
       quantidadeRegistrosSangria: registrosSangria.length,
       ticketPorPremioTotal,
     },
+    comprasOperacionais: comprasOperacionaisDetalhadas,
     sangria: {
       totalPeriodo: valorSangriaTotalPeriodo,
       totalCalculadoPelasNotasPeriodo: valorSangriaCalculadoNotasPeriodo,

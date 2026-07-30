@@ -207,6 +207,7 @@ export const atualizarCompra = async (req, res) => {
       nomeItem,
       produtoId,
       insumoId,
+      pecaId,
       fornecedorId,
       lojaId,
       descricaoUso,
@@ -219,8 +220,11 @@ export const atualizarCompra = async (req, res) => {
     } = req.body;
 
     if (
-      (produtoId ?? compra.produtoId) &&
-      (insumoId ?? compra.insumoId)
+      [
+        produtoId ?? compra.produtoId,
+        insumoId ?? compra.insumoId,
+        pecaId ?? compra.pecaId,
+      ].filter(Boolean).length > 1
     ) {
       return res.status(400).json({
         error: "Selecione ou um produto ou um insumo, não os dois",
@@ -236,6 +240,7 @@ export const atualizarCompra = async (req, res) => {
       nomeItem: nomeItem !== undefined ? nomeItem.trim() : compra.nomeItem,
       produtoId: produtoId !== undefined ? produtoId || null : compra.produtoId,
       insumoId: insumoId !== undefined ? insumoId || null : compra.insumoId,
+      pecaId: pecaId !== undefined ? pecaId || null : compra.pecaId,
       fornecedorId:
         fornecedorId !== undefined ? fornecedorId || null : compra.fornecedorId,
       lojaId: lojaId !== undefined ? lojaId || null : compra.lojaId,
@@ -308,6 +313,14 @@ export const atualizarStatusCompra = async (req, res) => {
           { quantidade: Number(estoque.quantidade || 0) + Number(compra.quantidade) },
           { transaction },
         );
+
+        const produto = await Produto.findByPk(compra.produtoId, { transaction });
+        if (produto && compra.valorUnitario !== null && compra.valorUnitario !== undefined) {
+          await produto.update(
+            { custoUnitario: compra.valorUnitario },
+            { transaction },
+          );
+        }
       } else if (compra.insumoId) {
         const insumo = await Insumo.findByPk(compra.insumoId, { transaction });
         if (insumo) {
@@ -328,6 +341,7 @@ export const atualizarStatusCompra = async (req, res) => {
             {
               quantidadeEstoque:
                 Number(peca.quantidadeEstoque || 0) + Number(compra.quantidade),
+              custoUnitario: compra.valorUnitario ?? peca.custoUnitario,
             },
             { transaction },
           );
