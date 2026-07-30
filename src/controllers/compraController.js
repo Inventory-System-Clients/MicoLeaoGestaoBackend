@@ -12,7 +12,7 @@ import {
 } from "../models/index.js";
 import { obterOuCriarEstoqueCentral } from "./movimentacaoEstoqueLojaController.js";
 
-const STATUS_VALIDOS = ["PESQUISANDO", "APROVADO", "COMPRADO", "RECEBIDO"];
+const STATUS_VALIDOS = ["PESQUISANDO", "COMPRADO", "RECEBIDO"];
 
 const includeCompra = [
   { model: Produto, as: "produto", attributes: ["id", "codigo", "nome"] },
@@ -376,7 +376,7 @@ export const deletarCompra = async (req, res) => {
       return res.status(404).json({ error: "Compra não encontrada" });
     }
 
-    if (!["PESQUISANDO", "APROVADO"].includes(compra.status)) {
+    if (!["PESQUISANDO"].includes(compra.status)) {
       return res.status(400).json({
         error: "Só é possível excluir compras que ainda não foram compradas",
       });

@@ -108,7 +108,7 @@ const Compra = sequelize.define(
       allowNull: true,
     },
     status: {
-      type: DataTypes.ENUM("PESQUISANDO", "APROVADO", "COMPRADO", "RECEBIDO"),
+      type: DataTypes.ENUM("PESQUISANDO", "COMPRADO", "RECEBIDO"),
       allowNull: false,
       defaultValue: "PESQUISANDO",
     },
