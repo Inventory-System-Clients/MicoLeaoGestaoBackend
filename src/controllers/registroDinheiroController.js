@@ -299,6 +299,7 @@ const includeRegistro = [
   { model: Maquina, as: "maquina", attributes: ["id", "codigo", "nome"] },
   { model: Usuario, as: "contadoPor", attributes: ["id", "nome"] },
   { model: Usuario, as: "conferidoPor", attributes: ["id", "nome"] },
+  { model: Usuario, as: "alertaBlinkResolvidoPor", attributes: ["id", "nome"] },
 ];
 
 const registroDinheiroController = {
@@ -421,6 +422,8 @@ const registroDinheiroController = {
       );
 
       const valorDinheiroNumero = normalizarValorMonetario(valorDinheiro);
+      const blinkFornecido =
+        valorBlink !== undefined && valorBlink !== null && valorBlink !== "";
       const valorBlinkNumero = normalizarValorMonetario(valorBlink);
 
       const valorEsperadoSistema = await calcularValorEsperadoSistema({
@@ -431,11 +434,19 @@ const registroDinheiroController = {
         fim: fimPeriodo,
       });
 
-      const valorContadoTotal =
-        valorDinheiroNumero + valorCartaoPixNumero + valorBlinkNumero;
+      // Blink é só um valor de comparação (trocadora), não entra na soma
+      // contada contra o valor esperado pelo sistema (fichas).
+      const valorContadoTotal = valorDinheiroNumero + valorCartaoPixNumero;
       const diferenca = Number(
         (valorContadoTotal - valorEsperadoSistema).toFixed(2),
       );
+
+      // Divergência Blink: só faz sentido pro fechamento de total da loja,
+      // e só se o Blink foi de fato informado.
+      const diferencaBlink =
+        ehRegistroTotalLoja && blinkFornecido
+          ? Number((valorContadoTotal - valorBlinkNumero).toFixed(2))
+          : null;
 
       const dadosRegistro = {
         lojaId: loja,
@@ -451,6 +462,7 @@ const registroDinheiroController = {
         valorBlink: valorBlinkNumero,
         valorEsperadoSistema: Number(valorEsperadoSistema.toFixed(2)),
         diferenca,
+        diferencaBlink,
         contadoPorId: req.usuario.id,
         conferidoPorId: conferidoPorId || null,
         comprovanteUrl: comprovanteUrl || null,
@@ -490,6 +502,7 @@ const registroDinheiroController = {
             "valorBlink",
             "valorEsperadoSistema",
             "diferenca",
+            "diferencaBlink",
             "contadoPorId",
             "conferidoPorId",
             "comprovanteUrl",
@@ -576,6 +589,55 @@ const registroDinheiroController = {
       return res
         .status(500)
         .json({ error: "Erro ao buscar registros", details: err.message });
+    }
+  },
+
+  async listarAlertasBlink(req, res) {
+    try {
+      const registros = await RegistroDinheiro.findAll({
+        where: {
+          registrarTotalLoja: true,
+          diferencaBlink: { [Op.ne]: null },
+          alertaBlinkResolvidoEm: null,
+        },
+        order: [["fim", "DESC"]],
+        include: includeRegistro,
+      });
+
+      const divergentes = registros.filter(
+        (registro) => Math.abs(Number(registro.diferencaBlink)) >= 0.01,
+      );
+
+      return res.json(divergentes);
+    } catch (err) {
+      return res.status(500).json({
+        error: "Erro ao buscar alertas de divergência do Blink",
+        details: err.message,
+      });
+    }
+  },
+
+  async resolverAlertaBlink(req, res) {
+    try {
+      const registro = await RegistroDinheiro.findByPk(req.params.id);
+      if (!registro) {
+        return res.status(404).json({ error: "Registro não encontrado" });
+      }
+
+      await registro.update({
+        alertaBlinkResolvidoEm: new Date(),
+        alertaBlinkResolvidoPorId: req.usuario.id,
+      });
+
+      const registroCompleto = await RegistroDinheiro.findByPk(registro.id, {
+        include: includeRegistro,
+      });
+      return res.json(registroCompleto);
+    } catch (err) {
+      return res.status(500).json({
+        error: "Erro ao resolver alerta de divergência do Blink",
+        details: err.message,
+      });
     }
   },
 

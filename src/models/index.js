@@ -555,6 +555,10 @@ RegistroDinheiro.belongsTo(Usuario, {
   foreignKey: "conferidoPorId",
   as: "conferidoPor",
 });
+RegistroDinheiro.belongsTo(Usuario, {
+  foreignKey: "alertaBlinkResolvidoPorId",
+  as: "alertaBlinkResolvidoPor",
+});
 
 export {
   Usuario,

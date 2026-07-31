@@ -91,7 +91,25 @@ const RegistroDinheiro = sequelize.define(
     diferenca: {
       type: DataTypes.DECIMAL(10, 2),
       allowNull: true,
-      comment: "Valor contado (dinheiro+cartão/pix+blink) - valor esperado pelo sistema",
+      comment: "Valor contado (dinheiro+cartão/pix) - valor esperado pelo sistema",
+    },
+    diferencaBlink: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: true,
+      comment:
+        "(Dinheiro+cartão/pix) - Blink, só para registro de total da loja. Blink é só comparação, não entra no valor contado.",
+    },
+    alertaBlinkResolvidoEm: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
+    alertaBlinkResolvidoPorId: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      references: {
+        model: "usuarios",
+        key: "id",
+      },
     },
     contadoPorId: {
       type: DataTypes.UUID,

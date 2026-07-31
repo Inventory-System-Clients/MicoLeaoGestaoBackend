@@ -1267,6 +1267,10 @@ export const gerarRelatorioImpressaoPorLoja = async ({
   let somaPercentualTaxaPonderado = 0;
   let somaBasePercentualTaxa = 0;
   let gastoTotalPeriodoSalvo = 0;
+  let valorBlinkTotal = 0;
+  let diferencaBlinkTotal = 0;
+  let divergenciasBlinkCount = 0;
+  let alertasBlinkPendentesCount = 0;
 
   const obterNumeroRegistro = (registro, ...chaves) => {
     for (const chave of chaves) {
@@ -1334,6 +1338,22 @@ export const gerarRelatorioImpressaoPorLoja = async ({
       gastoTotalPeriodoSalvo += parseFloat(
         r.gastoTotalPeriodo ?? r.gasto_total_periodo ?? 0,
       );
+
+      const diferencaBlinkRegistro =
+        r.diferencaBlink ?? r.diferenca_blink ?? null;
+      if (diferencaBlinkRegistro !== null && diferencaBlinkRegistro !== undefined) {
+        const diferencaBlinkNumero = Number(diferencaBlinkRegistro);
+        valorBlinkTotal += obterNumeroRegistro(r, "valorBlink", "valor_blink");
+        diferencaBlinkTotal += diferencaBlinkNumero;
+        if (Math.abs(diferencaBlinkNumero) >= 0.01) {
+          divergenciasBlinkCount += 1;
+          const resolvidoEm =
+            r.alertaBlinkResolvidoEm ?? r.alerta_blink_resolvido_em ?? null;
+          if (!resolvidoEm) {
+            alertasBlinkPendentesCount += 1;
+          }
+        }
+      }
     }
   });
 
@@ -1772,6 +1792,10 @@ export const gerarRelatorioImpressaoPorLoja = async ({
       gastoTotalPeriodo,
       taxaDeCartao: taxaDeCartaoPeriodo,
       percentualTaxaCartaoMedia: percentualTaxaCartaoMediaPeriodo,
+      valorBlinkTotal: Number(valorBlinkTotal.toFixed(2)),
+      diferencaBlinkTotal: Number(diferencaBlinkTotal.toFixed(2)),
+      divergenciasBlinkCount,
+      alertasBlinkPendentesCount,
       valorDinheiroLoja,
       valorCartaoPixLoja,
       valorCartaoPixLiquidoLoja,

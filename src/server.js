@@ -415,6 +415,9 @@ const startServer = async () => {
         ["contadoPorId", { type: DataTypes.UUID, allowNull: true }],
         ["conferidoPorId", { type: DataTypes.UUID, allowNull: true }],
         ["comprovanteUrl", { type: DataTypes.STRING(700), allowNull: true }],
+        ["diferencaBlink", { type: DataTypes.DECIMAL(10, 2), allowNull: true }],
+        ["alertaBlinkResolvidoEm", { type: DataTypes.DATE, allowNull: true }],
+        ["alertaBlinkResolvidoPorId", { type: DataTypes.UUID, allowNull: true }],
       ];
 
       for (const [nomeColuna, definicao] of colunasNovasRegistroDinheiro) {

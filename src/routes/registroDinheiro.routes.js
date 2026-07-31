@@ -22,4 +22,20 @@ router.post("/", registroDinheiroController.criar);
 // ADMIN/DESENVOLVEDOR.
 router.get("/", requireAdmin, registroDinheiroController.listar);
 
+// GET /registro-dinheiro/alertas-blink — divergências entre dinheiro+cartão
+// e o valor do Blink, pra alimentar a página de Alertas. Só ADMIN.
+router.get(
+  "/alertas-blink",
+  requireAdmin,
+  registroDinheiroController.listarAlertasBlink,
+);
+
+// PATCH /registro-dinheiro/:id/resolver-alerta-blink — marca a divergência
+// como revisada. Só ADMIN.
+router.patch(
+  "/:id/resolver-alerta-blink",
+  requireAdmin,
+  registroDinheiroController.resolverAlertaBlink,
+);
+
 export default router;
