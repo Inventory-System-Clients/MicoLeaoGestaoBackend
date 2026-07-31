@@ -5,7 +5,7 @@ import {
   RegistroDinheiro,
   GastoTotalFixoLoja,
 } from "../models/index.js";
-import { calcularGastoFixoProporcionalPeriodo } from "../controllers/relatorioController.js";
+import { calcularGastoFixoProporcionalPeriodo } from "../services/gastoFixoService.js";
 
 const run = async () => {
   try {

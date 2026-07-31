@@ -1,6 +1,6 @@
 import { Op } from "sequelize";
 import RegistroDinheiro from "../models/RegistroDinheiro.js";
-import { calcularGastoFixoProporcionalPeriodo } from "./relatorioController.js";
+import { calcularGastoFixoProporcionalPeriodo } from "../services/gastoFixoService.js";
 
 async function getDashboardGraficos(req, res) {
   try {
