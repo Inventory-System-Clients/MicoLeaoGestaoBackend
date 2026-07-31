@@ -548,6 +548,39 @@ const registroDinheiroController = {
     }
   },
 
+  async ultimoFechamento(req, res) {
+    try {
+      const { lojaId, maquinaId, registrarTotalLoja } = req.query;
+
+      if (!lojaId) {
+        return res.status(400).json({ error: "lojaId é obrigatório" });
+      }
+
+      const where = { lojaId };
+      if (registrarTotalLoja === "true") {
+        where.registrarTotalLoja = true;
+      } else if (maquinaId) {
+        where.maquinaId = maquinaId;
+      } else {
+        return res.json({ ultimoFim: null });
+      }
+
+      const ultimoRegistro = await RegistroDinheiro.findOne({
+        where,
+        order: [["fim", "DESC"]],
+      });
+
+      return res.json({
+        ultimoFim: ultimoRegistro ? ultimoRegistro.fim : null,
+      });
+    } catch (err) {
+      return res.status(500).json({
+        error: "Erro ao buscar último fechamento",
+        details: err.message,
+      });
+    }
+  },
+
   async valorEsperado(req, res) {
     try {
       const { lojaId, maquinaId, registrarTotalLoja, inicio, fim } = req.query;
