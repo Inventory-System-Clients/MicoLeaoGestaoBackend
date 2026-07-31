@@ -1752,7 +1752,7 @@ export const relatorioImpressao = async (req, res) => {
 
 export const relatorioTodasLojas = async (req, res) => {
   try {
-    const { dataInicio, dataFim } = req.query;
+    const { dataInicio, dataFim, lojaIds } = req.query;
 
     if (!dataInicio || !dataFim) {
       return res
@@ -1760,7 +1760,22 @@ export const relatorioTodasLojas = async (req, res) => {
         .json({ error: "dataInicio e dataFim são obrigatórios" });
     }
 
-    const lojas = await Loja.findAll({ where: { ativo: true }, raw: true });
+    // lojaIds opcional (CSV) permite restringir o relatório consolidado a um
+    // subconjunto de lojas, ex.: as lojas de um roteiro específico.
+    const idsFiltro = lojaIds
+      ? String(lojaIds)
+          .split(",")
+          .map((id) => id.trim())
+          .filter(Boolean)
+      : null;
+
+    const lojas = await Loja.findAll({
+      where: {
+        ativo: true,
+        ...(idsFiltro && idsFiltro.length ? { id: { [Op.in]: idsFiltro } } : {}),
+      },
+      raw: true,
+    });
 
     const respostas = await Promise.allSettled(
       lojas.map((loja) =>
