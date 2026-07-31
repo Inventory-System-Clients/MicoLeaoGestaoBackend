@@ -536,8 +536,39 @@ const registroDinheiroController = {
 
   async listar(req, res) {
     try {
+      const {
+        lojaId,
+        maquinaId,
+        registrarTotalLoja,
+        conferidoPorId,
+        contadoPorId,
+        dataInicio,
+        dataFim,
+        limite = 100,
+      } = req.query;
+
+      const where = {};
+      if (lojaId) where.lojaId = lojaId;
+      if (maquinaId) where.maquinaId = maquinaId;
+      if (registrarTotalLoja === "true") where.registrarTotalLoja = true;
+      if (registrarTotalLoja === "false") where.registrarTotalLoja = false;
+      if (conferidoPorId) where.conferidoPorId = conferidoPorId;
+      if (contadoPorId) where.contadoPorId = contadoPorId;
+
+      if (dataInicio || dataFim) {
+        where.fim = {};
+        if (dataInicio) {
+          where.fim[Op.gte] = new Date(`${dataInicio}T00:00:00.000-03:00`);
+        }
+        if (dataFim) {
+          where.fim[Op.lte] = new Date(`${dataFim}T23:59:59.999-03:00`);
+        }
+      }
+
       const registros = await RegistroDinheiro.findAll({
-        order: [["createdAt", "DESC"]],
+        where,
+        order: [["fim", "DESC"]],
+        limit: Math.min(parseInt(limite, 10) || 100, 500),
         include: includeRegistro,
       });
       return res.json(registros);
