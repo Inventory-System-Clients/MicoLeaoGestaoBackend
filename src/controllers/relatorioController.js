@@ -2241,7 +2241,10 @@ export const alertasBomDesempenho = async (req, res) => {
         (jogadasEsperadas * quantidadeSaiu * valorPorJogada).toFixed(2),
       );
 
-      if (jogadasPorPelucia !== jogadasEsperadas) {
+      // Tolerância de 3 jogadas pra mais ou pra menos antes de considerar a
+      // máquina fora do esperado — pequenas oscilações não devem gerar alerta.
+      const TOLERANCIA_JOGADAS = 3;
+      if (Math.abs(jogadasPorPelucia - jogadasEsperadas) > TOLERANCIA_JOGADAS) {
         const estaAbaixoDaMeta = jogadasPorPelucia < jogadasEsperadas;
         const metadadosAtual = montarMetadadosMovimentacao(atual);
         const metadadosAnterior = montarMetadadosMovimentacao(anterior);
