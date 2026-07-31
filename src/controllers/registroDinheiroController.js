@@ -124,28 +124,40 @@ const obterTotaisFixosMensais = async (lojaId, mesesIntervalo) => {
 
   const totalAtual = await calcularTotalFixoAtualDaLoja(lojaId);
 
+  // Atualizamos apenas o mês corrente no banco; para meses antigos, não
+  // sobrescrevemos valores históricos com o total atual.
+  const agora = new Date();
+  const anoAtual = agora.getFullYear();
+  const mesAtual = agora.getMonth() + 1;
+
   for (const item of mesesIntervalo) {
     const chave = `${item.ano}-${String(item.mes).padStart(2, "0")}`;
-    const valorSalvo = Number(mapa.get(chave) || 0);
-    const mudou = !mapa.has(chave) || Math.abs(valorSalvo - totalAtual) > 0.009;
+    const valorSalvo = mapa.has(chave) ? Number(mapa.get(chave) || 0) : null;
 
-    if (mudou) {
-      try {
-        await GastoTotalFixoLoja.upsert({
-          lojaId,
-          ano: item.ano,
-          mes: item.mes,
-          valorTotal: totalAtual,
-        });
-      } catch (error) {
-        console.warn(
-          "[RegistroDinheiro] Falha ao persistir total fixo mensal, seguindo com cálculo em memória:",
-          error.message,
-        );
+    if (valorSalvo === null) {
+      if (item.ano === anoAtual && item.mes === mesAtual) {
+        try {
+          await GastoTotalFixoLoja.upsert({
+            lojaId,
+            ano: item.ano,
+            mes: item.mes,
+            valorTotal: totalAtual,
+          });
+          mapa.set(chave, totalAtual);
+        } catch (error) {
+          console.warn(
+            "[RegistroDinheiro] Falha ao persistir total fixo do mês corrente:",
+            error.message,
+          );
+          mapa.set(chave, 0);
+        }
+      } else {
+        mapa.set(chave, 0);
       }
+    } else {
+      // Mantém o valor salvo para cálculo proporcional
+      mapa.set(chave, valorSalvo);
     }
-
-    mapa.set(chave, totalAtual);
   }
 
   return mapa;
@@ -355,7 +367,9 @@ const registroDinheiroController = {
         if (!conferente) {
           return res
             .status(400)
-            .json({ error: "Usuário informado em 'quem conferiu' inválido ou inativo" });
+            .json({
+              error: "Usuário informado em 'quem conferiu' inválido ou inativo",
+            });
         }
       }
 
@@ -715,4 +729,3 @@ const registroDinheiroController = {
 };
 
 export default registroDinheiroController;
-

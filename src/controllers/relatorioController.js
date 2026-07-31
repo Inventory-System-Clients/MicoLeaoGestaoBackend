@@ -233,7 +233,11 @@ const obterTotaisFixosMensais = async (lojaId, mesesIntervalo) => {
   return mapaTotais;
 };
 
-const calcularGastoFixoProporcionalPeriodo = async (lojaId, inicio, fim) => {
+export const calcularGastoFixoProporcionalPeriodo = async (
+  lojaId,
+  inicio,
+  fim,
+) => {
   const mesesIntervalo = listaMesesNoIntervalo(inicio, fim);
   const totaisPorMes = await obterTotaisFixosMensais(lojaId, mesesIntervalo);
 
@@ -241,26 +245,58 @@ const calcularGastoFixoProporcionalPeriodo = async (lojaId, inicio, fim) => {
 
   for (const { ano, mes } of mesesIntervalo) {
     const chave = `${ano}-${String(mes).padStart(2, "0")}`;
-    const valorMensal = Number(totaisPorMes.get(chave) || 0);
-    if (valorMensal <= 0) continue;
+    const valorSalvo = totaisPorMes.has(chave)
+      ? Number(totaisPorMes.get(chave) || 0)
+      : null;
 
-    const inicioMes = inicioDoDia(new Date(ano, mes - 1, 1));
-    const fimMes = fimDoDia(new Date(ano, mes, 0));
+    // Se não houver total salvo para o mês, não o sobrescrevemos com o
+    // total atual — exceto quando for o mês corrente (atualização automática).
+    const agora = new Date();
+    const anoAtual = agora.getFullYear();
+    const mesAtual = agora.getMonth() + 1;
 
-    const inicioAplicado = inicio > inicioMes ? inicio : inicioMes;
-    const fimAplicado = fim < fimMes ? fim : fimMes;
+    if (valorSalvo === null) {
+      if (ano === anoAtual && mes === mesAtual) {
+        // Persistir total atual apenas para o mês corrente
+        try {
+          await GastoTotalFixoLoja.upsert({
+            lojaId,
+            ano,
+            mes,
+            valorTotal: totalAtual,
+          });
+          totaisPorMes.set(chave, totalAtual);
+        } catch (error) {
+          console.warn(
+            "[Relatorio] Falha ao persistir total fixo do mês corrente:",
+            error.message,
+          );
+          totaisPorMes.set(chave, 0);
+        }
+      } else {
+        // Mantemos 0 para meses antigos sem registro salvo
+        totaisPorMes.set(chave, 0);
+      }
+    } else {
+      // Há um total salvo: use-o para o cálculo proporcional
+      const inicioMes = inicioDoDia(new Date(ano, mes - 1, 1));
+      const fimMes = fimDoDia(new Date(ano, mes, 0));
 
-    if (inicioAplicado > fimAplicado) continue;
+      const inicioAplicado = inicio > inicioMes ? inicio : inicioMes;
+      const fimAplicado = fim < fimMes ? fim : fimMes;
 
-    const diasDoPeriodoNoMes =
-      Math.floor(
-        (inicioDoDia(fimAplicado).getTime() -
-          inicioDoDia(inicioAplicado).getTime()) /
-          DAY_IN_MS,
-      ) + 1;
+      if (inicioAplicado > fimAplicado) continue;
 
-    totalProporcional +=
-      (valorMensal / diasNoMes(ano, mes)) * diasDoPeriodoNoMes;
+      const diasDoPeriodoNoMes =
+        Math.floor(
+          (inicioDoDia(fimAplicado).getTime() -
+            inicioDoDia(inicioAplicado).getTime()) /
+            DAY_IN_MS,
+        ) + 1;
+
+      totalProporcional +=
+        (valorSalvo / diasNoMes(ano, mes)) * diasDoPeriodoNoMes;
+    }
   }
 
   return Number(totalProporcional.toFixed(2));
@@ -1053,15 +1089,15 @@ export const alertasMaquinaParada = async (req, res) => {
     }
 
     alertas.sort(
-      (a, b) => (b.diasSemMovimentacao ?? Infinity) - (a.diasSemMovimentacao ?? Infinity),
+      (a, b) =>
+        (b.diasSemMovimentacao ?? Infinity) -
+        (a.diasSemMovimentacao ?? Infinity),
     );
 
     res.json({ totalAlertas: alertas.length, alertas });
   } catch (error) {
     console.error("Erro ao buscar alertas de máquina parada:", error);
-    res
-      .status(500)
-      .json({ error: "Erro ao buscar alertas de máquina parada" });
+    res.status(500).json({ error: "Erro ao buscar alertas de máquina parada" });
   }
 };
 
@@ -1341,7 +1377,10 @@ export const gerarRelatorioImpressaoPorLoja = async ({
 
       const diferencaBlinkRegistro =
         r.diferencaBlink ?? r.diferenca_blink ?? null;
-      if (diferencaBlinkRegistro !== null && diferencaBlinkRegistro !== undefined) {
+      if (
+        diferencaBlinkRegistro !== null &&
+        diferencaBlinkRegistro !== undefined
+      ) {
         const diferencaBlinkNumero = Number(diferencaBlinkRegistro);
         valorBlinkTotal += obterNumeroRegistro(r, "valorBlink", "valor_blink");
         diferencaBlinkTotal += diferencaBlinkNumero;
@@ -1374,15 +1413,16 @@ export const gerarRelatorioImpressaoPorLoja = async ({
       status: "RECEBIDO",
       lojaId,
       recebidoEm: { [Op.between]: [inicio, fim] },
-      [Op.or]: [
-        { insumoId: { [Op.ne]: null } },
-        { pecaId: { [Op.ne]: null } },
-      ],
+      [Op.or]: [{ insumoId: { [Op.ne]: null } }, { pecaId: { [Op.ne]: null } }],
     },
     include: [
       { model: Fornecedor, as: "fornecedor", attributes: ["id", "nome"] },
       { model: Insumo, as: "insumo", attributes: ["id", "nome", "unidade"] },
-      { model: Peca, as: "peca", attributes: ["id", "nome", "codigo", "unidade"] },
+      {
+        model: Peca,
+        as: "peca",
+        attributes: ["id", "nome", "codigo", "unidade"],
+      },
     ],
     order: [["recebidoEm", "DESC"]],
   });
@@ -1392,7 +1432,10 @@ export const gerarRelatorioImpressaoPorLoja = async ({
     const valorUnitario = Number(compra.valorUnitario || 0);
     const valorTotalInformado = Number(compra.valorTotal || 0);
     const valorTotal = Number(
-      (valorTotalInformado > 0 ? valorTotalInformado : quantidade * valorUnitario).toFixed(2),
+      (valorTotalInformado > 0
+        ? valorTotalInformado
+        : quantidade * valorUnitario
+      ).toFixed(2),
     );
     const tipo = compra.insumoId ? "INSUMO" : "PECA";
     const itemRelacionado = compra.insumo || compra.peca;
@@ -2351,13 +2394,7 @@ export const alertasBomDesempenho = async (req, res) => {
         where: { maquinaId: maquina.id },
         order: [["dataColeta", "DESC"]],
         limit: 2,
-        attributes: [
-          "id",
-          "usuarioId",
-          "contadorIn",
-          "sairam",
-          "dataColeta",
-        ],
+        attributes: ["id", "usuarioId", "contadorIn", "sairam", "dataColeta"],
         include: [
           {
             model: Usuario,
@@ -2379,7 +2416,8 @@ export const alertasBomDesempenho = async (req, res) => {
         continue;
       }
 
-      const diffIn = Number(atual.contadorIn || 0) - Number(anterior.contadorIn || 0);
+      const diffIn =
+        Number(atual.contadorIn || 0) - Number(anterior.contadorIn || 0);
       const quantidadeSaiu = Number(atual.sairam || 0);
 
       if (diffIn <= 0 || quantidadeSaiu <= 0) {

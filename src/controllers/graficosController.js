@@ -1,5 +1,6 @@
 import { Op } from "sequelize";
 import RegistroDinheiro from "../models/RegistroDinheiro.js";
+import { calcularGastoFixoProporcionalPeriodo } from "./relatorioController.js";
 
 async function getDashboardGraficos(req, res) {
   try {
@@ -7,7 +8,9 @@ async function getDashboardGraficos(req, res) {
 
     // Validação básica
     if (!dataInicio || !dataFim) {
-      return res.status(400).json({ error: "dataInicio e dataFim são obrigatórios." });
+      return res
+        .status(400)
+        .json({ error: "dataInicio e dataFim são obrigatórios." });
     }
 
     // Filtro base por período
@@ -39,7 +42,7 @@ async function getDashboardGraficos(req, res) {
           cartaoPix: 0,
           cartaoPixLiquido: 0,
           taxaDeCartao: 0,
-          _somaTaxaCartao: 0,   // acumulador para média ponderada
+          _somaTaxaCartao: 0, // acumulador para média ponderada
           _countTaxa: 0,
           gastoFixo: 0,
           gastoVariavel: 0,
@@ -51,21 +54,21 @@ async function getDashboardGraficos(req, res) {
       }
 
       const t = totaisPorLoja[id];
-      t.dinheiro           += Number(reg.valorDinheiro || 0);
-      t.cartaoPix          += Number(reg.valorCartaoPix || 0);
-      t.cartaoPixLiquido   += Number(reg.valorCartaoPixLiquido || 0);
-      t.taxaDeCartao       += Number(reg.taxaDeCartao || 0);
-      t.gastoFixo          += Number(reg.gastoFixoPeriodo || 0);
-      t.gastoVariavel      += Number(reg.gastoVariavelPeriodo || 0);
-      t.gastoProdutos      += Number(reg.gastoProdutosPeriodo || 0);
-      t.gastoTotal         += Number(reg.gastoTotalPeriodo || 0);
-      t.fichas             += Number(reg.fichas || 0);
-      t.saidas             += Number(reg.saidas || 0);
+      t.dinheiro += Number(reg.valorDinheiro || 0);
+      t.cartaoPix += Number(reg.valorCartaoPix || 0);
+      t.cartaoPixLiquido += Number(reg.valorCartaoPixLiquido || 0);
+      t.taxaDeCartao += Number(reg.taxaDeCartao || 0);
+      t.gastoFixo += Number(reg.gastoFixoPeriodo || 0);
+      t.gastoVariavel += Number(reg.gastoVariavelPeriodo || 0);
+      t.gastoProdutos += Number(reg.gastoProdutosPeriodo || 0);
+      t.gastoTotal += Number(reg.gastoTotalPeriodo || 0);
+      t.fichas += Number(reg.fichas || 0);
+      t.saidas += Number(reg.saidas || 0);
 
       // Acumula para média ponderada da taxa de cartão
       if (Number(reg.percentualTaxaCartaoMedia || 0) > 0) {
         t._somaTaxaCartao += Number(reg.percentualTaxaCartaoMedia);
-        t._countTaxa      += 1;
+        t._countTaxa += 1;
       }
     });
 
@@ -77,28 +80,54 @@ async function getDashboardGraficos(req, res) {
       delete loja._countTaxa;
     });
 
+    // Recompute fixed cost per loja using monthly totals (avoids double-counting)
+    await Promise.all(
+      Object.values(totaisPorLoja).map(async (loja) => {
+        const inicio = new Date(`${dataInicio}T00:00:00`);
+        const fim = new Date(`${dataFim}T23:59:59`);
+        try {
+          const gastoFixo = await calcularGastoFixoProporcionalPeriodo(
+            loja.lojaId === "SEM_LOJA" ? null : loja.lojaId,
+            inicio,
+            fim,
+          );
+          loja.gastoFixo = Number(gastoFixo || 0);
+        } catch (err) {
+          loja.gastoFixo = Number(loja.gastoFixo || 0);
+        }
+      }),
+    );
+
     // Agrega totais gerais
     const totaisGerais = Object.values(totaisPorLoja).reduce(
       (acc, loja) => {
-        acc.dinheiro         += loja.dinheiro;
-        acc.cartaoPix        += loja.cartaoPix;
+        acc.dinheiro += loja.dinheiro;
+        acc.cartaoPix += loja.cartaoPix;
         acc.cartaoPixLiquido += loja.cartaoPixLiquido;
-        acc.taxaDeCartao     += loja.taxaDeCartao;
-        acc.gastoFixo        += loja.gastoFixo;
-        acc.gastoVariavel    += loja.gastoVariavel;
-        acc.gastoProdutos    += loja.gastoProdutos;
-        acc.gastoTotal       += loja.gastoTotal;
-        acc.fichas           += loja.fichas;
-        acc.saidas           += loja.saidas;
-        acc._somaTaxa        += loja.percentualTaxaCartaoMedia;
-        acc._countTaxa       += 1;
+        acc.taxaDeCartao += loja.taxaDeCartao;
+        acc.gastoFixo += loja.gastoFixo;
+        acc.gastoVariavel += loja.gastoVariavel;
+        acc.gastoProdutos += loja.gastoProdutos;
+        acc.gastoTotal += loja.gastoTotal;
+        acc.fichas += loja.fichas;
+        acc.saidas += loja.saidas;
+        acc._somaTaxa += loja.percentualTaxaCartaoMedia;
+        acc._countTaxa += 1;
         return acc;
       },
       {
-        dinheiro: 0, cartaoPix: 0, cartaoPixLiquido: 0,
-        taxaDeCartao: 0, gastoFixo: 0, gastoVariavel: 0,
-        gastoProdutos: 0, gastoTotal: 0, fichas: 0, saidas: 0,
-        _somaTaxa: 0, _countTaxa: 0,
+        dinheiro: 0,
+        cartaoPix: 0,
+        cartaoPixLiquido: 0,
+        taxaDeCartao: 0,
+        gastoFixo: 0,
+        gastoVariavel: 0,
+        gastoProdutos: 0,
+        gastoTotal: 0,
+        fichas: 0,
+        saidas: 0,
+        _somaTaxa: 0,
+        _countTaxa: 0,
       },
     );
 
