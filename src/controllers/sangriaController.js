@@ -1,5 +1,5 @@
 import { Op } from "sequelize";
-import { Sangria, Loja } from "../models/index.js";
+import { Sangria, Loja, Usuario } from "../models/index.js";
 
 const normalizarInteiroNaoNegativo = (valor) => {
   const numero = Number(valor ?? 0);
@@ -92,10 +92,19 @@ const sangriaController = {
 
   async listar(req, res) {
     try {
-      const { lojaId, dataInicio, dataFim } = req.query;
+      const {
+        lojaId,
+        dataInicio,
+        dataFim,
+        usuarioId,
+        valorMin,
+        valorMax,
+        observacao,
+      } = req.query;
 
       const where = {};
       if (lojaId) where.lojaId = lojaId;
+      if (usuarioId) where.usuarioId = usuarioId;
 
       if (dataInicio || dataFim) {
         const inicio = dataInicio
@@ -110,9 +119,22 @@ const sangriaController = {
         };
       }
 
+      if (valorMin || valorMax) {
+        where.quantidade = {};
+        if (valorMin) where.quantidade[Op.gte] = Number(valorMin);
+        if (valorMax) where.quantidade[Op.lte] = Number(valorMax);
+      }
+
+      if (observacao) {
+        where.observacao = { [Op.iLike]: `%${observacao}%` };
+      }
+
       const registros = await Sangria.findAll({
         where,
-        include: [{ model: Loja, as: "loja", attributes: ["id", "nome"] }],
+        include: [
+          { model: Loja, as: "loja", attributes: ["id", "nome"] },
+          { model: Usuario, as: "usuario", attributes: ["id", "nome"] },
+        ],
         order: [["dataContagem", "DESC"]],
       });
 
