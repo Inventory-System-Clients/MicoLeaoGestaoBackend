@@ -1,3 +1,4 @@
+import { Op } from "sequelize";
 import MovimentacaoEstoqueLoja from "../models/MovimentacaoEstoqueLoja.js";
 import MovimentacaoEstoqueLojaProduto from "../models/MovimentacaoEstoqueLojaProduto.js";
 import { EstoqueLoja, Loja, Usuario, Produto } from "../models/index.js";
@@ -32,11 +33,29 @@ export const obterOuCriarEstoqueCentral = async (transaction) => {
   return estoqueCentral;
 };
 
-// Listar todas as movimentações de estoque de loja
+// Listar movimentações de estoque de loja
 export const listarMovimentacoesEstoqueLoja = async (req, res) => {
   try {
+    const { lojaId, dataInicio, dataFim, usuarioId, limite = 200 } = req.query;
+
+    const where = {};
+    if (lojaId) where.lojaId = lojaId;
+    if (usuarioId) where.usuarioId = usuarioId;
+
+    if (dataInicio || dataFim) {
+      where.dataMovimentacao = {};
+      if (dataInicio) {
+        where.dataMovimentacao[Op.gte] = new Date(`${dataInicio}T00:00:00.000-03:00`);
+      }
+      if (dataFim) {
+        where.dataMovimentacao[Op.lte] = new Date(`${dataFim}T23:59:59.999-03:00`);
+      }
+    }
+
     const movimentacoes = await MovimentacaoEstoqueLoja.findAll({
+      where,
       order: [["dataMovimentacao", "DESC"]],
+      limit: Math.min(parseInt(limite, 10) || 200, 1000),
       include: [
         { model: Loja, as: "loja", attributes: ["id", "nome"] },
         { model: Usuario, as: "usuario", attributes: ["id", "nome"] },
