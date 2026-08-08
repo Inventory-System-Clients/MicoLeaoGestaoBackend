@@ -153,6 +153,9 @@ const startServer = async () => {
     await sequelize.query(`
       ALTER TYPE "enum_usuarios_role" ADD VALUE IF NOT EXISTS 'ENTREGADOR';
     `);
+    await sequelize.query(`
+      ALTER TYPE "enum_usuarios_role" ADD VALUE IF NOT EXISTS 'FUNCIONARIO_CADASTRO';
+    `);
     const colunasMaquinas = await queryInterface.describeTable("maquinas");
     const colunasLojas = await queryInterface.describeTable("lojas");
 
@@ -392,12 +395,45 @@ const startServer = async () => {
           "data_vencimento_extintor",
           { type: DataTypes.DATEONLY, allowNull: true },
         ],
+        ["data_fim_contrato", { type: DataTypes.DATEONLY, allowNull: true }],
+        [
+          "dias_aviso_contrato",
+          { type: DataTypes.INTEGER, allowNull: true, defaultValue: 60 },
+        ],
+        [
+          "contrato_aviso_adiado_dias",
+          { type: DataTypes.INTEGER, allowNull: true },
+        ],
       ];
 
       for (const [nomeColuna, definicao] of colunasNovasLojas) {
         if (!colunasLojas[nomeColuna]) {
           await queryInterface.addColumn("lojas", nomeColuna, definicao);
           console.log(`✅ Coluna ${nomeColuna} adicionada às lojas!`);
+        }
+      }
+    }
+
+    {
+      const { DataTypes } = await import("sequelize");
+      const tabelas = await queryInterface.showAllTables();
+      if (tabelas.includes("GastoFixoLoja")) {
+        const colunasGastoFixoLoja =
+          await queryInterface.describeTable("GastoFixoLoja");
+        const colunasNovasGastoFixoLoja = [
+          ["vigencia_inicio", { type: DataTypes.DATEONLY, allowNull: true }],
+          ["vigencia_fim", { type: DataTypes.DATEONLY, allowNull: true }],
+        ];
+
+        for (const [nomeColuna, definicao] of colunasNovasGastoFixoLoja) {
+          if (!colunasGastoFixoLoja[nomeColuna]) {
+            await queryInterface.addColumn(
+              "GastoFixoLoja",
+              nomeColuna,
+              definicao,
+            );
+            console.log(`✅ Coluna ${nomeColuna} adicionada aos gastos fixos de loja!`);
+          }
         }
       }
     }

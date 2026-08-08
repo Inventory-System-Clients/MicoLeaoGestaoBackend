@@ -54,6 +54,25 @@ const Loja = sequelize.define(
       allowNull: true,
       field: "data_vencimento_extintor",
     },
+    dataFimContrato: {
+      type: DataTypes.DATEONLY,
+      allowNull: true,
+      field: "data_fim_contrato",
+    },
+    diasAvisoContrato: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      defaultValue: 60,
+      field: "dias_aviso_contrato",
+      comment: "Quantos dias antes do fim do contrato o sistema deve avisar",
+    },
+    contratoAvisoAdiadoDias: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      field: "contrato_aviso_adiado_dias",
+      comment:
+        "Quando preenchido, adia o alerta de contrato: só volta a avisar quando faltar esse tanto de dias (ou menos). Zerado automaticamente quando a data de fim do contrato muda.",
+    },
     valorFichaPadrao: {
       type: DataTypes.DECIMAL(10, 2),
       allowNull: false,

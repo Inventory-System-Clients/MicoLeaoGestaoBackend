@@ -956,6 +956,63 @@ export const alertasExtintor = async (req, res) => {
   }
 };
 
+const DIAS_ANTECEDENCIA_CONTRATO_DEFAULT = 60;
+
+// --- ALERTA: CONTRATO VENCENDO ---
+export const alertasContrato = async (req, res) => {
+  try {
+    const lojas = await Loja.findAll({
+      where: {
+        ativo: true,
+        dataFimContrato: { [Op.ne]: null },
+      },
+      attributes: [
+        "id",
+        "nome",
+        "dataFimContrato",
+        "diasAvisoContrato",
+        "contratoAvisoAdiadoDias",
+      ],
+    });
+
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+
+    const alertas = lojas
+      .map((loja) => {
+        // "Adiar" sobrepõe o prazo padrão até faltar o tanto de dias que o
+        // admin escolheu; a partir daí o alerta volta a valer normalmente.
+        const diasAviso =
+          loja.contratoAvisoAdiadoDias ??
+          loja.diasAvisoContrato ??
+          DIAS_ANTECEDENCIA_CONTRATO_DEFAULT;
+        const vencimento = new Date(loja.dataFimContrato);
+        const diasRestantes = Math.floor(
+          (vencimento - hoje) / (1000 * 60 * 60 * 24),
+        );
+
+        return { loja, diasAviso, vencimento, diasRestantes };
+      })
+      .filter(({ diasRestantes, diasAviso }) => diasRestantes <= diasAviso)
+      .map(({ loja, vencimento, diasRestantes }) => ({
+        loja: { id: loja.id, nome: loja.nome },
+        titulo: "Contrato vencendo",
+        dataFimContrato: loja.dataFimContrato,
+        diasRestantes,
+        mensagem:
+          diasRestantes < 0
+            ? `Contrato vencido há ${Math.abs(diasRestantes)} dias`
+            : `Contrato vence em ${diasRestantes} dias`,
+      }))
+      .sort((a, b) => a.diasRestantes - b.diasRestantes);
+
+    res.json({ totalAlertas: alertas.length, alertas });
+  } catch (error) {
+    console.error("Erro ao buscar alertas de contrato:", error);
+    res.status(500).json({ error: "Erro ao buscar alertas de contrato" });
+  }
+};
+
 // --- PERFORMANCE MÁQUINAS ---
 export const performanceMaquinas = async (req, res) => {
   try {

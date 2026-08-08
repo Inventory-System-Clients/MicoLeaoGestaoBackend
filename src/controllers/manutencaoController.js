@@ -64,7 +64,7 @@ const includeAdmin = [
 // Mesmo critério usado para atualizar status: admin/dev, o responsável ou
 // quem está na lista de funcionários permitidos da manutenção.
 const usuarioPodeAgirNaManutencao = (manutencao, usuario) =>
-  ["ADMIN", "DESENVOLVEDOR"].includes(usuario.role) ||
+  ["ADMIN", "DESENVOLVEDOR", "FUNCIONARIO_CADASTRO"].includes(usuario.role) ||
   manutencao.responsavelId === usuario.id ||
   (manutencao.funcionariosPermitidos || []).some(
     (permitido) => permitido.id === usuario.id,
@@ -443,7 +443,7 @@ export const listarManutencoes = async (req, res) => {
     let include = [...includeAdmin];
     const where = {};
 
-    if (!["ADMIN", "DESENVOLVEDOR"].includes(req.usuario.role)) {
+    if (!["ADMIN", "DESENVOLVEDOR", "FUNCIONARIO_CADASTRO"].includes(req.usuario.role)) {
       where.status = { [Op.ne]: "CONCLUIDA" };
       where[Op.or] = [
         { responsavelId: req.usuario.id },

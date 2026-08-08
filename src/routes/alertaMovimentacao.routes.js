@@ -11,7 +11,15 @@ const router = express.Router();
 router.use(autenticar);
 
 router.post("/", criarAlertaMovimentacao);
-router.get("/", autorizarRole("ADMIN"), listarAlertasMovimentacao);
-router.patch("/:id/resolver", autorizarRole("ADMIN"), resolverAlertaMovimentacao);
+router.get(
+  "/",
+  autorizarRole("ADMIN", "FUNCIONARIO_CADASTRO"),
+  listarAlertasMovimentacao,
+);
+router.patch(
+  "/:id/resolver",
+  autorizarRole("ADMIN", "FUNCIONARIO_CADASTRO"),
+  resolverAlertaMovimentacao,
+);
 
 export default router;

@@ -23,23 +23,23 @@ router.use(autenticar);
 router.get("/", listarManutencoes);
 router.get(
   "/funcionarios",
-  autorizarRole("ADMIN"),
+  autorizarRole("ADMIN", "FUNCIONARIO_CADASTRO"),
   listarFuncionariosManutencao,
 );
 router.get("/maquina/:maquinaId", obterHistoricoMaquina);
 router.get(
   "/alertas/atrasadas",
-  autorizarRole("ADMIN"),
+  autorizarRole("ADMIN", "FUNCIONARIO_CADASTRO"),
   alertasManutencaoAtrasada,
 );
 router.get(
   "/alertas/recorrentes",
-  autorizarRole("ADMIN"),
+  autorizarRole("ADMIN", "FUNCIONARIO_CADASTRO"),
   alertasManutencaoRecorrente,
 );
 router.post(
   "/",
-  autorizarRole("ADMIN"),
+  autorizarRole("ADMIN", "FUNCIONARIO_CADASTRO"),
   registrarLog("CRIAR_MANUTENCAO", "Manutencao"),
   criarManutencao,
 );

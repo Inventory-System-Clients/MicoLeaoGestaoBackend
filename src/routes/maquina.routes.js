@@ -25,21 +25,21 @@ router.get("/:id/problema", autenticar, problemaMaquina);
 router.post(
   "/",
   autenticar,
-  autorizarRole("ADMIN"),
+  autorizarRole("ADMIN", "FUNCIONARIO_CADASTRO"),
   registrarLog("CRIAR_MAQUINA", "Maquina"),
   criarMaquina,
 );
 router.put(
   "/:id",
   autenticar,
-  autorizarRole("ADMIN"),
+  autorizarRole("ADMIN", "FUNCIONARIO_CADASTRO"),
   registrarLog("EDITAR_MAQUINA", "Maquina"),
   atualizarMaquina,
 );
 router.delete(
   "/:id",
   autenticar,
-  autorizarRole("ADMIN"),
+  autorizarRole("ADMIN", "FUNCIONARIO_CADASTRO"),
   registrarLog("DELETAR_MAQUINA", "Maquina"),
   deletarMaquina,
 );

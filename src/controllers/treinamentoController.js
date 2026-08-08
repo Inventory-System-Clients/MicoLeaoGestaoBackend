@@ -23,7 +23,7 @@ const normalizarVideo = (body) => {
 export const listarVideosTreinamento = async (req, res) => {
   try {
     const where =
-      ["ADMIN", "DESENVOLVEDOR"].includes(req.usuario.role)
+      ["ADMIN", "DESENVOLVEDOR", "FUNCIONARIO_CADASTRO"].includes(req.usuario.role)
         ? {}
         : {
             ativo: true,

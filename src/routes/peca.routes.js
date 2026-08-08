@@ -10,42 +10,42 @@ import {
   listarEstoquePecasFuncionario,
   listarPecas,
 } from "../controllers/pecaController.js";
-import { autenticar, registrarLog, requireAdmin } from "../middlewares/auth.js";
+import { autenticar, registrarLog, requireAdminOuCadastro } from "../middlewares/auth.js";
 
 const router = express.Router();
 
 router.use(autenticar);
 
 router.get("/", listarPecas);
-router.get("/envios", requireAdmin, listarEnviosPeca);
+router.get("/envios", requireAdminOuCadastro, listarEnviosPeca);
 router.get("/estoque-funcionario", listarEstoquePecasFuncionario);
 router.post(
   "/",
-  requireAdmin,
+  requireAdminOuCadastro,
   registrarLog("CRIAR_PECA", "Peca"),
   criarPeca,
 );
 router.put(
   "/:id",
-  requireAdmin,
+  requireAdminOuCadastro,
   registrarLog("EDITAR_PECA", "Peca"),
   atualizarPeca,
 );
 router.delete(
   "/:id",
-  requireAdmin,
+  requireAdminOuCadastro,
   registrarLog("EXCLUIR_PECA", "Peca"),
   deletarPeca,
 );
 router.post(
   "/:id/lancar-quantidade",
-  requireAdmin,
+  requireAdminOuCadastro,
   registrarLog("LANCAR_QUANTIDADE_PECA", "Peca"),
   lancarQuantidadePeca,
 );
 router.post(
   "/:id/enviar",
-  requireAdmin,
+  requireAdminOuCadastro,
   registrarLog("ENVIAR_PECA_FUNCIONARIO", "MovimentacaoPeca"),
   enviarPecaFuncionario,
 );

@@ -29,20 +29,66 @@ const calcularValorMensalDoGastoFixo = (gasto) => {
   return valor;
 };
 
-// Soma dos gastos fixos configurados HOJE pra loja (o que está salvo na
-// tela de "Gastos Fixos" agora, sem noção de histórico).
-export const calcularTotalFixoAtualDaLoja = async (lojaId, transaction) => {
+// Extrai {ano, mes} de uma data DATEONLY sem passar por `new Date(string)`,
+// que interpreta "AAAA-MM-DD" como UTC e pode "voltar" um dia (e às vezes um
+// mês inteiro) quando os getters locais são lidos num fuso atrás de UTC.
+const extrairAnoMes = (valor) => {
+  if (!valor) return null;
+  if (typeof valor === "string") {
+    const match = valor.match(/^(\d{4})-(\d{2})/);
+    return match ? { ano: Number(match[1]), mes: Number(match[2]) } : null;
+  }
+  if (valor instanceof Date) {
+    return { ano: valor.getUTCFullYear(), mes: valor.getUTCMonth() + 1 };
+  }
+  return null;
+};
+
+// Um gasto fixo só entra na conta de um mês (ano/mes) se estiver dentro da
+// sua vigência: vigenciaInicio vazia = vale desde sempre; vigenciaFim vazia
+// = continua valendo pra sempre. Pra um gasto de mês único, início e fim
+// apontam pro mesmo mês.
+export const gastoVigenteNoMes = (gasto, ano, mes) => {
+  const chaveReferencia = ano * 12 + (mes - 1);
+
+  const inicio = extrairAnoMes(gasto?.vigenciaInicio);
+  if (inicio) {
+    const chaveInicio = inicio.ano * 12 + (inicio.mes - 1);
+    if (chaveReferencia < chaveInicio) return false;
+  }
+
+  const fim = extrairAnoMes(gasto?.vigenciaFim);
+  if (fim) {
+    const chaveFim = fim.ano * 12 + (fim.mes - 1);
+    if (chaveReferencia > chaveFim) return false;
+  }
+
+  return true;
+};
+
+// Soma dos gastos fixos que valem pra um mês específico (por padrão, o mês
+// corrente) — respeita a vigência de cada gasto (mês único / "a partir de").
+export const calcularTotalFixoAtualDaLoja = async (
+  lojaId,
+  transaction,
+  referencia = new Date(),
+) => {
   const gastos = await GastoFixoLoja.findAll({
     where: {
       [Op.and]: [sequelizeWhere(cast(col("lojaid"), "text"), String(lojaId))],
     },
-    attributes: ["id", "nome", "valor"],
+    attributes: ["id", "nome", "valor", "vigenciaInicio", "vigenciaFim"],
     order: [["id", "ASC"]],
     raw: true,
     transaction,
   });
 
-  const gastosConsolidados = consolidarGastosFixosPorNome(gastos);
+  const ano = referencia.getFullYear();
+  const mes = referencia.getMonth() + 1;
+
+  const gastosConsolidados = consolidarGastosFixosPorNome(gastos).filter(
+    (gasto) => gastoVigenteNoMes(gasto, ano, mes),
+  );
   const total = gastosConsolidados.reduce(
     (acc, item) => acc + calcularValorMensalDoGastoFixo(item),
     0,

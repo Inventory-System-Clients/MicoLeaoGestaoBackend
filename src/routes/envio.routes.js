@@ -8,12 +8,20 @@ import { autenticar, autorizarRole, registrarLog } from "../middlewares/auth.js"
 
 const router = express.Router();
 
-router.use(autenticar, autorizarRole("ADMIN", "FUNCIONARIO_ESTOQUE", "ENTREGADOR"));
+router.use(
+  autenticar,
+  autorizarRole(
+    "ADMIN",
+    "FUNCIONARIO_ESTOQUE",
+    "ENTREGADOR",
+    "FUNCIONARIO_CADASTRO",
+  ),
+);
 
 router.get("/", listarEnvios);
 router.post(
   "/",
-  autorizarRole("ADMIN", "FUNCIONARIO_ESTOQUE"),
+  autorizarRole("ADMIN", "FUNCIONARIO_ESTOQUE", "FUNCIONARIO_CADASTRO"),
   registrarLog("CRIAR_ENVIO", "Envio"),
   criarEnvio,
 );

@@ -3,8 +3,6 @@ import { Op, fn, col, cast, where as sequelizeWhere } from "sequelize";
 import { sequelize } from "../database/connection.js";
 import {
   GastoVariavel,
-  GastoTotalFixoLoja,
-  GastoFixoLoja,
   MovimentacaoProduto,
   Movimentacao,
   Maquina,
@@ -12,10 +10,7 @@ import {
   Loja,
   Usuario,
 } from "../models/index.js";
-
-const DAY_IN_MS = 24 * 60 * 60 * 1000;
-
-const diasNoMes = (ano, mes) => new Date(ano, mes, 0).getDate();
+import { calcularGastoFixoProporcionalPeriodo } from "../services/gastoFixoService.js";
 
 const inicioDoDia = (data) =>
   new Date(data.getFullYear(), data.getMonth(), data.getDate(), 0, 0, 0, 0);
@@ -31,19 +26,6 @@ const fimDoDia = (data) =>
     999,
   );
 
-const listaMesesNoIntervalo = (inicio, fim) => {
-  const meses = [];
-  const cursor = new Date(inicio.getFullYear(), inicio.getMonth(), 1);
-  const limite = new Date(fim.getFullYear(), fim.getMonth(), 1);
-
-  while (cursor <= limite) {
-    meses.push({ ano: cursor.getFullYear(), mes: cursor.getMonth() + 1 });
-    cursor.setMonth(cursor.getMonth() + 1);
-  }
-
-  return meses;
-};
-
 const normalizarValorMonetario = (valor) => {
   if (valor === null || valor === undefined || valor === "") return 0;
   if (typeof valor === "number") return Number.isFinite(valor) ? valor : 0;
@@ -55,144 +37,6 @@ const normalizarValorMonetario = (valor) => {
 
   const numero = Number(valorNormalizado);
   return Number.isFinite(numero) ? numero : 0;
-};
-
-const normalizarNomeGasto = (nomeOriginal) =>
-  String(nomeOriginal || "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/\s+/g, " ")
-    .trim();
-
-const consolidarGastosFixosPorNome = (gastos) => {
-  const mapa = new Map();
-
-  for (const gasto of gastos) {
-    const chave = normalizarNomeGasto(gasto?.nome);
-    if (!chave) continue;
-    mapa.set(chave, gasto);
-  }
-
-  return Array.from(mapa.values());
-};
-
-const calcularValorMensalDoGastoFixo = (gasto) => {
-  const valor = Number(gasto?.valor || 0);
-
-  if (!Number.isFinite(valor) || valor <= 0) return 0;
-  return valor;
-};
-
-const calcularTotalFixoAtualDaLoja = async (lojaId) => {
-  const gastos = await GastoFixoLoja.findAll({
-    where: {
-      [Op.and]: [sequelizeWhere(cast(col("lojaid"), "text"), String(lojaId))],
-    },
-    attributes: ["id", "nome", "valor"],
-    order: [["id", "ASC"]],
-    raw: true,
-  });
-
-  const gastosConsolidados = consolidarGastosFixosPorNome(gastos);
-
-  const total = gastosConsolidados.reduce(
-    (acc, item) => acc + calcularValorMensalDoGastoFixo(item),
-    0,
-  );
-
-  return Number(total.toFixed(2));
-};
-
-const obterTotaisFixosMensais = async (lojaId, mesesIntervalo) => {
-  if (!mesesIntervalo.length) return new Map();
-
-  const totais = await GastoTotalFixoLoja.findAll({
-    where: {
-      [Op.and]: [sequelizeWhere(cast(col("lojaid"), "text"), String(lojaId))],
-      [Op.or]: mesesIntervalo.map((m) => ({ ano: m.ano, mes: m.mes })),
-    },
-    raw: true,
-  });
-
-  const mapa = new Map(
-    totais.map((item) => [
-      `${item.ano}-${String(item.mes).padStart(2, "0")}`,
-      Number(item.valorTotal || 0),
-    ]),
-  );
-
-  const totalAtual = await calcularTotalFixoAtualDaLoja(lojaId);
-
-  // Atualizamos apenas o mês corrente no banco; para meses antigos, não
-  // sobrescrevemos valores históricos com o total atual.
-  const agora = new Date();
-  const anoAtual = agora.getFullYear();
-  const mesAtual = agora.getMonth() + 1;
-
-  for (const item of mesesIntervalo) {
-    const chave = `${item.ano}-${String(item.mes).padStart(2, "0")}`;
-    const valorSalvo = mapa.has(chave) ? Number(mapa.get(chave) || 0) : null;
-
-    if (valorSalvo === null) {
-      if (item.ano === anoAtual && item.mes === mesAtual) {
-        try {
-          await GastoTotalFixoLoja.upsert({
-            lojaId,
-            ano: item.ano,
-            mes: item.mes,
-            valorTotal: totalAtual,
-          });
-          mapa.set(chave, totalAtual);
-        } catch (error) {
-          console.warn(
-            "[RegistroDinheiro] Falha ao persistir total fixo do mês corrente:",
-            error.message,
-          );
-          mapa.set(chave, 0);
-        }
-      } else {
-        mapa.set(chave, 0);
-      }
-    } else {
-      // Mantém o valor salvo para cálculo proporcional
-      mapa.set(chave, valorSalvo);
-    }
-  }
-
-  return mapa;
-};
-
-const calcularGastoFixoProporcional = async (lojaId, inicio, fim) => {
-  const mesesIntervalo = listaMesesNoIntervalo(inicio, fim);
-  const totaisPorMes = await obterTotaisFixosMensais(lojaId, mesesIntervalo);
-
-  let totalProporcional = 0;
-
-  for (const { ano, mes } of mesesIntervalo) {
-    const chave = `${ano}-${String(mes).padStart(2, "0")}`;
-    const valorMensal = Number(totaisPorMes.get(chave) || 0);
-    if (valorMensal <= 0) continue;
-
-    const inicioMes = inicioDoDia(new Date(ano, mes - 1, 1));
-    const fimMes = fimDoDia(new Date(ano, mes, 0));
-    const inicioAplicado = inicio > inicioMes ? inicio : inicioMes;
-    const fimAplicado = fim < fimMes ? fim : fimMes;
-
-    if (inicioAplicado > fimAplicado) continue;
-
-    const diasDoPeriodoNoMes =
-      Math.floor(
-        (inicioDoDia(fimAplicado).getTime() -
-          inicioDoDia(inicioAplicado).getTime()) /
-          DAY_IN_MS,
-      ) + 1;
-
-    totalProporcional +=
-      (valorMensal / diasNoMes(ano, mes)) * diasDoPeriodoNoMes;
-  }
-
-  return Number(totalProporcional.toFixed(2));
 };
 
 const calcularGastoVariavelPeriodo = async (lojaId, inicio, fim) => {
@@ -255,7 +99,7 @@ const calcularGastoProdutosSaidaPeriodo = async (lojaId, inicio, fim) => {
 const calcularGastosPeriodo = async (lojaId, inicio, fim) => {
   const [gastoFixoPeriodo, gastoVariavelPeriodo, gastoProdutosPeriodo] =
     await Promise.all([
-      calcularGastoFixoProporcional(lojaId, inicio, fim),
+      calcularGastoFixoProporcionalPeriodo(lojaId, inicio, fim),
       calcularGastoVariavelPeriodo(lojaId, inicio, fim),
       calcularGastoProdutosSaidaPeriodo(lojaId, inicio, fim),
     ]);

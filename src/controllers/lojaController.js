@@ -113,6 +113,8 @@ export const criarLoja = async (req, res) => {
       dataInicio,
       observacoes,
       dataVencimentoExtintor,
+      dataFimContrato,
+      diasAvisoContrato,
       valorFichaPadrao,
     } = req.body;
 
@@ -138,6 +140,11 @@ export const criarLoja = async (req, res) => {
       dataInicio: dataInicio || null,
       observacoes: observacoes || null,
       dataVencimentoExtintor: dataVencimentoExtintor || null,
+      dataFimContrato: dataFimContrato || null,
+      diasAvisoContrato:
+        diasAvisoContrato !== undefined && diasAvisoContrato !== null && diasAvisoContrato !== ""
+          ? diasAvisoContrato
+          : 60,
       valorFichaPadrao: valorFichaNormalizado.informado
         ? valorFichaNormalizado.valor
         : VALOR_FICHA_PADRAO_DEFAULT,
@@ -172,9 +179,18 @@ export const atualizarLoja = async (req, res) => {
       dataInicio,
       observacoes,
       dataVencimentoExtintor,
+      dataFimContrato,
+      diasAvisoContrato,
+      contratoAvisoAdiadoDias,
       ativo,
       valorFichaPadrao,
     } = req.body;
+
+    // Se a data de fim do contrato mudou (renovação), zera qualquer "adiar"
+    // que tivesse sido configurado pro contrato anterior.
+    const contratoMudou =
+      dataFimContrato !== undefined &&
+      String(dataFimContrato || "") !== String(loja.dataFimContrato || "");
 
     const valorFichaNormalizado = normalizarValorFichaPadrao(valorFichaPadrao);
     if (valorFichaNormalizado.invalido) {
@@ -210,6 +226,11 @@ export const atualizarLoja = async (req, res) => {
       observacoes: observacoes ?? loja.observacoes,
       dataVencimentoExtintor:
         dataVencimentoExtintor ?? loja.dataVencimentoExtintor,
+      dataFimContrato: dataFimContrato ?? loja.dataFimContrato,
+      diasAvisoContrato: diasAvisoContrato ?? loja.diasAvisoContrato,
+      contratoAvisoAdiadoDias: contratoMudou
+        ? null
+        : (contratoAvisoAdiadoDias ?? loja.contratoAvisoAdiadoDias),
       valorFichaPadrao: valorFichaNormalizado.informado
         ? valorFichaNormalizado.valor
         : loja.valorFichaPadrao,

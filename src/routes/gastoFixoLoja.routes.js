@@ -4,7 +4,7 @@ import { autenticar, autorizarRole } from "../middlewares/auth.js";
 
 const router = express.Router();
 
-router.use(autenticar, autorizarRole("ADMIN"));
+router.use(autenticar, autorizarRole("ADMIN", "FUNCIONARIO_CADASTRO"));
 
 // Buscar gastos fixos de uma loja
 router.get("/:lojaId", controller.getGastosFixos);

@@ -1,6 +1,7 @@
 import { GastoFixoLoja, GastoTotalFixoLoja } from "../models/index.js";
 import { sequelize } from "../database/connection.js";
 import { Op } from "sequelize";
+import { calcularTotalFixoAtualDaLoja } from "../services/gastoFixoService.js";
 
 const normalizarNomeGasto = (nomeOriginal) =>
   String(nomeOriginal || "")
@@ -24,44 +25,6 @@ const normalizarNomeParaPersistencia = (nomeOriginal) => {
   }
 
   return nome;
-};
-
-const consolidarGastosFixosPorNome = (gastos) => {
-  const mapa = new Map();
-
-  for (const gasto of gastos) {
-    const chave = normalizarNomeGasto(gasto?.nome);
-    if (!chave) continue;
-    mapa.set(chave, gasto);
-  }
-
-  return Array.from(mapa.values());
-};
-
-const calcularValorMensalDoGasto = (gasto) => {
-  const valor = Number(gasto?.valor || 0);
-
-  if (!Number.isFinite(valor) || valor <= 0) return 0;
-  return valor;
-};
-
-const calcularTotalFixoLoja = async (lojaId, transaction) => {
-  const gastos = await GastoFixoLoja.findAll({
-    where: { lojaId },
-    attributes: ["id", "nome", "valor"],
-    order: [["id", "ASC"]],
-    raw: true,
-    transaction,
-  });
-
-  const gastosConsolidados = consolidarGastosFixosPorNome(gastos);
-
-  const total = gastosConsolidados.reduce(
-    (acc, item) => acc + calcularValorMensalDoGasto(item),
-    0,
-  );
-
-  return Number(total.toFixed(2));
 };
 
 export const getGastosFixos = async (req, res) => {
@@ -105,6 +68,8 @@ export const saveGastosFixos = async (req, res) => {
           nome,
           valor: Number(gasto.valor || 0),
           observacao: gasto.observacao || null,
+          vigenciaInicio: gasto.vigenciaInicio || null,
+          vigenciaFim: gasto.vigenciaFim || null,
         },
         { transaction },
       );
@@ -156,7 +121,7 @@ export const saveGastosFixos = async (req, res) => {
     const agora = new Date();
     const ano = agora.getFullYear();
     const mes = agora.getMonth() + 1;
-    const valorTotal = await calcularTotalFixoLoja(lojaId, transaction);
+    const valorTotal = await calcularTotalFixoAtualDaLoja(lojaId, transaction);
 
     await GastoTotalFixoLoja.upsert(
       {

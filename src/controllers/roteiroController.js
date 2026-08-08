@@ -44,7 +44,7 @@ const obterRoteiroCompleto = async (id) => {
 };
 
 const usuarioPodeAcessar = (req, roteiro) =>
-  ["ADMIN", "DESENVOLVEDOR"].includes(req.usuario.role) ||
+  ["ADMIN", "DESENVOLVEDOR", "FUNCIONARIO_CADASTRO"].includes(req.usuario.role) ||
   String(roteiro.usuarioId) === String(req.usuario.id);
 
 const normalizarDiasSemana = (todosDias, diasSemana) => {
@@ -112,7 +112,7 @@ export const listarRoteiros = async (req, res) => {
     await aplicarResetSeNecessario();
 
     const where =
-      ["ADMIN", "DESENVOLVEDOR"].includes(req.usuario.role)
+      ["ADMIN", "DESENVOLVEDOR", "FUNCIONARIO_CADASTRO"].includes(req.usuario.role)
         ? {}
         : { usuarioId: req.usuario.id, ativo: true };
 

@@ -21,21 +21,21 @@ router.get("/:id", autenticar, obterProduto);
 router.post(
   "/",
   autenticar,
-  autorizarRole("ADMIN"),
+  autorizarRole("ADMIN", "FUNCIONARIO_CADASTRO"),
   registrarLog("CRIAR_PRODUTO", "Produto"),
   criarProduto
 );
 router.put(
   "/:id",
   autenticar,
-  autorizarRole("ADMIN"),
+  autorizarRole("ADMIN", "FUNCIONARIO_CADASTRO"),
   registrarLog("EDITAR_PRODUTO", "Produto"),
   atualizarProduto
 );
 router.delete(
   "/:id",
   autenticar,
-  autorizarRole("ADMIN"),
+  autorizarRole("ADMIN", "FUNCIONARIO_CADASTRO"),
   registrarLog("DELETAR_PRODUTO", "Produto"),
   deletarProduto
 );

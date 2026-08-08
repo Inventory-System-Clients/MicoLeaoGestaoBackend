@@ -12,7 +12,7 @@ router.get("/", statusModoSeguranca);
 router.post(
   "/ativar",
   autenticar,
-  autorizarRole("ADMIN", "DESENVOLVEDOR"),
+  autorizarRole("ADMIN", "DESENVOLVEDOR", "FUNCIONARIO_CADASTRO"),
   ativarModoSeguranca,
 );
 router.post("/desativar", desativarModoSeguranca);

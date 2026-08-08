@@ -4,6 +4,7 @@ import {
   alertasEstoque,
   alertasMaquinaParada,
   alertasExtintor,
+  alertasContrato,
   performanceMaquinas,
   relatorioImpressao,
   relatorioTodasLojas,
@@ -20,26 +21,29 @@ import { autenticar, autorizarRole } from "../middlewares/auth.js";
 const router = express.Router();
 
 // Novas rotas para alertas OUT e IN
+// Alertas usados pela página/sino de Alertas — libera também o Funcionário
+// de Cadastro (não é "ver relatório financeiro", é alerta operacional).
 router.get(
   "/alertas-movimentacao-out",
   autenticar,
-  autorizarRole("ADMIN"),
+  autorizarRole("ADMIN", "FUNCIONARIO_CADASTRO"),
   alertasMovimentacaoOut,
 );
 router.get(
   "/alertas-movimentacao-in",
   autenticar,
-  autorizarRole("ADMIN"),
+  autorizarRole("ADMIN", "FUNCIONARIO_CADASTRO"),
   alertasMovimentacaoIn,
 );
 router.get(
   "/alertas-bom-desempenho",
   autenticar,
-  autorizarRole("ADMIN"),
+  autorizarRole("ADMIN", "FUNCIONARIO_CADASTRO"),
   alertasBomDesempenho,
 );
 
-// Todas as rotas de relatórios são restritas a ADMIN
+// Relatórios/dashboards financeiros: restritos a ADMIN (Funcionário de
+// Cadastro não tem acesso a financeiro/relatórios/gráficos).
 router.get(
   "/balanco-semanal",
   autenticar,
@@ -49,32 +53,38 @@ router.get(
 router.get(
   "/alertas-movimentacao-inconsistente",
   autenticar,
-  autorizarRole("ADMIN"),
+  autorizarRole("ADMIN", "FUNCIONARIO_CADASTRO"),
   buscarAlertasDeInconsistencia,
 );
 router.delete(
   "/alertas-movimentacao-inconsistente/:id",
   autenticar,
-  autorizarRole("ADMIN"),
+  autorizarRole("ADMIN", "FUNCIONARIO_CADASTRO"),
   ignorarAlertaMovimentacao,
 );
 router.get(
   "/alertas-estoque",
   autenticar,
-  autorizarRole("ADMIN"),
+  autorizarRole("ADMIN", "FUNCIONARIO_CADASTRO"),
   alertasEstoque,
 );
 router.get(
   "/alertas-maquina-parada",
   autenticar,
-  autorizarRole("ADMIN"),
+  autorizarRole("ADMIN", "FUNCIONARIO_CADASTRO"),
   alertasMaquinaParada,
 );
 router.get(
   "/alertas-extintor",
   autenticar,
-  autorizarRole("ADMIN"),
+  autorizarRole("ADMIN", "FUNCIONARIO_CADASTRO"),
   alertasExtintor,
+);
+router.get(
+  "/alertas-contrato",
+  autenticar,
+  autorizarRole("ADMIN", "FUNCIONARIO_CADASTRO"),
+  alertasContrato,
 );
 router.get(
   "/performance-maquinas",
@@ -103,7 +113,7 @@ router.get(
 router.get(
   "/alertas-abastecimento-incompleto",
   autenticar,
-  autorizarRole("ADMIN"),
+  autorizarRole("ADMIN", "FUNCIONARIO_CADASTRO"),
   alertasAbastecimentoIncompleto,
 );
 

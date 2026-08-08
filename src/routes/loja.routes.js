@@ -19,21 +19,21 @@ router.get("/:id", autenticar, obterLoja);
 router.post(
   "/",
   autenticar,
-  autorizarRole("ADMIN"),
+  autorizarRole("ADMIN", "FUNCIONARIO_CADASTRO"),
   registrarLog("CRIAR_LOJA", "Loja"),
   criarLoja
 );
 router.put(
   "/:id",
   autenticar,
-  autorizarRole("ADMIN"),
+  autorizarRole("ADMIN", "FUNCIONARIO_CADASTRO"),
   registrarLog("EDITAR_LOJA", "Loja"),
   atualizarLoja
 );
 router.delete(
   "/:id",
   autenticar,
-  autorizarRole("ADMIN"),
+  autorizarRole("ADMIN", "FUNCIONARIO_CADASTRO"),
   registrarLog("DELETAR_LOJA", "Loja"),
   deletarLoja
 );

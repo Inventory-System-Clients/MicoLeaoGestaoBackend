@@ -8,7 +8,7 @@ import {
   listarVideosTreinamento,
   marcarFeedbackVisualizado,
 } from "../controllers/treinamentoController.js";
-import { autenticar, registrarLog, requireAdmin } from "../middlewares/auth.js";
+import { autenticar, registrarLog, requireAdminOuCadastro } from "../middlewares/auth.js";
 
 const router = express.Router();
 
@@ -16,31 +16,31 @@ router.get("/videos", autenticar, listarVideosTreinamento);
 router.post(
   "/videos",
   autenticar,
-  requireAdmin,
+  requireAdminOuCadastro,
   registrarLog("CRIAR_TREINAMENTO_VIDEO", "TreinamentoVideo"),
   criarVideoTreinamento,
 );
 router.put(
   "/videos/:id",
   autenticar,
-  requireAdmin,
+  requireAdminOuCadastro,
   registrarLog("EDITAR_TREINAMENTO_VIDEO", "TreinamentoVideo"),
   atualizarVideoTreinamento,
 );
 router.delete(
   "/videos/:id",
   autenticar,
-  requireAdmin,
+  requireAdminOuCadastro,
   registrarLog("EXCLUIR_TREINAMENTO_VIDEO", "TreinamentoVideo"),
   excluirVideoTreinamento,
 );
 
 router.post("/feedbacks", autenticar, criarFeedbackTreinamento);
-router.get("/feedbacks", autenticar, requireAdmin, listarFeedbacksTreinamento);
+router.get("/feedbacks", autenticar, requireAdminOuCadastro, listarFeedbacksTreinamento);
 router.patch(
   "/feedbacks/:id/visualizado",
   autenticar,
-  requireAdmin,
+  requireAdminOuCadastro,
   marcarFeedbackVisualizado,
 );
 

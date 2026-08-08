@@ -11,7 +11,10 @@ import { autenticar, autorizarRole, registrarLog } from "../middlewares/auth.js"
 
 const router = express.Router();
 
-router.use(autenticar, autorizarRole("ADMIN", "FUNCIONARIO_ESTOQUE"));
+router.use(
+  autenticar,
+  autorizarRole("ADMIN", "FUNCIONARIO_ESTOQUE", "FUNCIONARIO_CADASTRO"),
+);
 
 router.get("/", listarCompras);
 router.get("/historico-precos", historicoPrecos);

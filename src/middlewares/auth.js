@@ -5,6 +5,15 @@ import LogAtividade from "../models/LogAtividade.js";
 export const isAdminOuDesenvolvedor = (role) =>
   role === "ADMIN" || role === "DESENVOLVEDOR";
 
+// Funcionário de Cadastro: acesso equivalente a ADMIN nas áreas
+// operacionais/cadastro (lojas, máquinas, produtos, estoque, roteiros,
+// manutenção, peças etc), mas SEM acesso a financeiro (registro de
+// dinheiro, gráficos, relatórios) nem a gestão de usuários. Por isso não
+// entra em `isAdminOuDesenvolvedor`/`requireAdmin` — só é liberado
+// explicitamente rota a rota via `requireAdminOuCadastro`/`autorizarRole`.
+export const isAdminDesenvolvedorOuCadastro = (role) =>
+  isAdminOuDesenvolvedor(role) || role === "FUNCIONARIO_CADASTRO";
+
 // US01 - Middleware de Autenticação
 export const autenticar = async (req, res, next) => {
   try {
@@ -60,13 +69,32 @@ export const requireAdmin = (req, res, next) => {
   next();
 };
 
+// Como requireAdmin, mas também libera o Funcionário de Cadastro. Usar nas
+// rotas de cadastro/operacional (roteiros, peças, insumos, treinamentos,
+// receitas, pedidos de pelúcia etc) — nunca em rotas de financeiro,
+// gráficos, relatórios ou usuários.
+export const requireAdminOuCadastro = (req, res, next) => {
+  if (!req.usuario || !req.usuario.role) {
+    return res
+      .status(401)
+      .json({ error: "Usuário não autenticado ou token inválido" });
+  }
+  if (!isAdminDesenvolvedorOuCadastro(req.usuario.role)) {
+    return res
+      .status(403)
+      .json({ error: "Acesso negado. Você não tem permissão para esta ação." });
+  }
+  next();
+};
+
 // US02 - Middleware de Verificação de Permissão em Loja
 export const verificarPermissaoLoja = (acao = "visualizar") => {
   return async (req, res, next) => {
     try {
-      // Admin, desenvolvedor e funcionário de estoque têm acesso total às lojas
+      // Admin, desenvolvedor, funcionário de cadastro e funcionário de
+      // estoque têm acesso total às lojas
       if (
-        isAdminOuDesenvolvedor(req.usuario.role) ||
+        isAdminDesenvolvedorOuCadastro(req.usuario.role) ||
         req.usuario.role === "FUNCIONARIO_ESTOQUE"
       ) {
         return next();

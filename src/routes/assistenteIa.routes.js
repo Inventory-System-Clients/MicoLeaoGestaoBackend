@@ -10,7 +10,7 @@ const router = express.Router();
 router.post(
   "/comando",
   autenticar,
-  autorizarRole("ADMIN"),
+  autorizarRole("ADMIN", "FUNCIONARIO_CADASTRO"),
   registrarLog("PROCESSAR_COMANDO_ASSISTENTE_IA", "AssistenteIA"),
   processarComandoAssistenteIa,
 );

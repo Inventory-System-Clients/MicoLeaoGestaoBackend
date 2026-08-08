@@ -43,7 +43,7 @@ router.put(
 router.delete(
   "/:id",
   autenticar,
-  autorizarRole("ADMIN"),
+  autorizarRole("ADMIN", "FUNCIONARIO_CADASTRO"),
   registrarLog("DELETAR_MOVIMENTACAO", "Movimentacao"),
   deletarMovimentacao
 );

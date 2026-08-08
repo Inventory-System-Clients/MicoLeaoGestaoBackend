@@ -27,6 +27,20 @@ const GastoFixoLoja = sequelize.define(
       type: DataTypes.TEXT,
       allowNull: true,
     },
+    vigenciaInicio: {
+      type: DataTypes.DATEONLY,
+      allowNull: true,
+      field: "vigencia_inicio",
+      comment:
+        "A partir de qual mês esse gasto passa a valer. Vazio = vale desde sempre.",
+    },
+    vigenciaFim: {
+      type: DataTypes.DATEONLY,
+      allowNull: true,
+      field: "vigencia_fim",
+      comment:
+        "Até qual mês esse gasto vale. Vazio = continua valendo indefinidamente. Pra um gasto de mês único, use o mesmo mês em início e fim.",
+    },
   },
   {
     tableName: "GastoFixoLoja",

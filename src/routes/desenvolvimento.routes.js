@@ -11,7 +11,10 @@ import { autenticar, autorizarRole, registrarLog } from "../middlewares/auth.js"
 
 const router = express.Router();
 
-router.use(autenticar, autorizarRole("ADMIN", "DESENVOLVEDOR"));
+router.use(
+  autenticar,
+  autorizarRole("ADMIN", "DESENVOLVEDOR", "FUNCIONARIO_CADASTRO"),
+);
 
 router.get("/", listarSugestoesDesenvolvimento);
 router.post(
