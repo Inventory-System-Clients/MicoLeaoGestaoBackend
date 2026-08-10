@@ -6,8 +6,10 @@ import {
   criarManutencao,
   listarFuncionariosManutencao,
   listarManutencoes,
+  listarPecasQuebradasManutencao,
   listarPecasUsadasManutencao,
   obterHistoricoMaquina,
+  registrarPecaQuebradaManutencao,
   registrarUsoPecaManutencao,
 } from "../controllers/manutencaoController.js";
 import {
@@ -53,6 +55,12 @@ router.post(
   "/:id/pecas",
   registrarLog("REGISTRAR_USO_PECA", "ManutencaoPeca"),
   registrarUsoPecaManutencao,
+);
+router.get("/:id/pecas-quebradas", listarPecasQuebradasManutencao);
+router.post(
+  "/:id/pecas-quebradas",
+  registrarLog("REGISTRAR_PECA_QUEBRADA", "ManutencaoPecaQuebrada"),
+  registrarPecaQuebradaManutencao,
 );
 
 export default router;

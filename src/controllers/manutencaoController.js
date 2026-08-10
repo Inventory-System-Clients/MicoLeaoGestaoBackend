@@ -7,6 +7,7 @@ import {
   Maquina,
   Manutencao,
   ManutencaoPeca,
+  ManutencaoPecaQuebrada,
   ManutencaoUsuario,
   Peca,
   Usuario,
@@ -59,6 +60,24 @@ const includeAdmin = [
       { model: Usuario, as: "usuario", attributes: ["id", "nome"] },
     ],
   },
+  {
+    model: Peca,
+    as: "pecaPlanejada",
+    attributes: ["id", "codigo", "nome", "unidade"],
+  },
+  {
+    model: Usuario,
+    as: "pecaPlanejadaFuncionario",
+    attributes: ["id", "nome"],
+  },
+  {
+    model: ManutencaoPecaQuebrada,
+    as: "pecasQuebradas",
+    include: [
+      { model: Peca, as: "peca", attributes: ["id", "codigo", "nome", "unidade"] },
+      { model: Usuario, as: "funcionario", attributes: ["id", "nome"] },
+    ],
+  },
 ];
 
 // Mesmo critério usado para atualizar status: admin/dev, o responsável ou
@@ -69,6 +88,77 @@ const usuarioPodeAgirNaManutencao = (manutencao, usuario) =>
   (manutencao.funcionariosPermitidos || []).some(
     (permitido) => permitido.id === usuario.id,
   );
+
+// Deduz a peça do carrinho (estoque) do funcionário informado e registra o
+// uso na manutenção. Usada tanto na criação da manutenção (peça já
+// selecionada de cara) quanto no registro de uso posterior. Retorna
+// { error, status } em caso de falha (nada é lançado) pra quem chamou poder
+// decidir se dá rollback só disso ou da transação inteira.
+const registrarUsoDePecaInterno = async ({
+  manutencaoId,
+  pecaId,
+  quantidade,
+  funcionarioId,
+  observacao,
+  transaction,
+}) => {
+  const quantidadeNumerica = Number(quantidade);
+
+  if (!pecaId) {
+    return { status: 400, error: "Selecione a peça utilizada" };
+  }
+
+  if (!funcionarioId) {
+    return {
+      status: 400,
+      error: "Selecione o funcionário que vai usar a peça",
+    };
+  }
+
+  if (!Number.isInteger(quantidadeNumerica) || quantidadeNumerica <= 0) {
+    return {
+      status: 400,
+      error: "Informe uma quantidade válida (inteiro maior que zero)",
+    };
+  }
+
+  const peca = await Peca.findByPk(pecaId, { transaction });
+  if (!peca) {
+    return { status: 400, error: "Peça informada não encontrada" };
+  }
+
+  const estoqueFuncionario = await EstoquePecaFuncionario.findOne({
+    where: { funcionarioId, pecaId },
+    transaction,
+    lock: transaction.LOCK.UPDATE,
+  });
+
+  const disponivel = estoqueFuncionario?.quantidade || 0;
+  if (disponivel < quantidadeNumerica) {
+    return {
+      status: 400,
+      error: `O funcionário não tem estoque suficiente dessa peça no carrinho. Disponível: ${disponivel}, solicitado: ${quantidadeNumerica}.`,
+    };
+  }
+
+  await estoqueFuncionario.update(
+    { quantidade: disponivel - quantidadeNumerica },
+    { transaction },
+  );
+
+  await ManutencaoPeca.create(
+    {
+      manutencaoId,
+      pecaId,
+      quantidade: quantidadeNumerica,
+      usuarioId: funcionarioId,
+      observacao: observacao || null,
+    },
+    { transaction },
+  );
+
+  return null;
+};
 
 // Recalcula o statusOperacao da máquina a partir das manutenções em aberto.
 const sincronizarStatusMaquina = async (maquinaId, transaction) => {
@@ -275,6 +365,7 @@ export const criarManutencao = async (req, res) => {
       responsavelId,
       tipoProblema,
       prazo,
+      pecaPlanejada,
     } = req.body;
 
     if (!titulo || !descricao) {
@@ -292,6 +383,41 @@ export const criarManutencao = async (req, res) => {
     }
 
     const idsUnicos = [...new Set(funcionariosIds.filter(Boolean))];
+
+    const pecaPlanejadaValida =
+      pecaPlanejada && pecaPlanejada.pecaId && pecaPlanejada.quantidade;
+    const pecaPlanejadaQuantidadeNumerica = pecaPlanejadaValida
+      ? Number(pecaPlanejada.quantidade)
+      : null;
+
+    if (pecaPlanejadaValida) {
+      if (!idsUnicos.includes(pecaPlanejada.funcionarioId)) {
+        await transaction.rollback();
+        return res.status(400).json({
+          error:
+            "O funcionário que vai usar a peça precisa estar entre os responsáveis pela manutenção",
+        });
+      }
+
+      if (
+        !Number.isInteger(pecaPlanejadaQuantidadeNumerica) ||
+        pecaPlanejadaQuantidadeNumerica <= 0
+      ) {
+        await transaction.rollback();
+        return res.status(400).json({
+          error:
+            "Informe uma quantidade válida de peça (inteiro maior que zero)",
+        });
+      }
+
+      const pecaExiste = await Peca.findByPk(pecaPlanejada.pecaId, {
+        transaction,
+      });
+      if (!pecaExiste) {
+        await transaction.rollback();
+        return res.status(400).json({ error: "Peça informada não encontrada" });
+      }
+    }
 
     const custoInformado =
       custo !== undefined && custo !== null && custo !== "";
@@ -383,6 +509,16 @@ export const criarManutencao = async (req, res) => {
         tipoProblema: tipoProblema || null,
         prazo: prazo || null,
         criadoPorId: req.usuario.id,
+        pecaPlanejadaId: pecaPlanejadaValida ? pecaPlanejada.pecaId : null,
+        pecaPlanejadaFuncionarioId: pecaPlanejadaValida
+          ? pecaPlanejada.funcionarioId
+          : null,
+        pecaPlanejadaQuantidade: pecaPlanejadaValida
+          ? pecaPlanejadaQuantidadeNumerica
+          : null,
+        pecaPlanejadaObservacao: pecaPlanejadaValida
+          ? pecaPlanejada.observacao || null
+          : null,
       },
       { transaction },
     );
@@ -394,6 +530,10 @@ export const criarManutencao = async (req, res) => {
       })),
       { transaction },
     );
+
+    // A peça planejada só é descontada do carrinho quando a manutenção for
+    // marcada como concluída (ver atualizarStatusManutencao) — aqui só fica
+    // registrada a intenção, sem mexer em estoque ainda.
 
     if (custoInformado && custoNumerico > 0 && lojaIdFinal) {
       const agora = new Date();
@@ -551,10 +691,13 @@ export const listarManutencoes = async (req, res) => {
 };
 
 export const atualizarStatusManutencao = async (req, res) => {
+  const transaction = await sequelize.transaction();
+
   try {
     const { status } = req.body;
 
     if (!STATUS_VALIDOS.includes(status)) {
+      await transaction.rollback();
       return res.status(400).json({ error: "Status inválido" });
     }
 
@@ -567,9 +710,11 @@ export const atualizarStatusManutencao = async (req, res) => {
           through: { attributes: [] },
         },
       ],
+      transaction,
     });
 
     if (!manutencao) {
+      await transaction.rollback();
       return res.status(404).json({ error: "Manutenção não encontrada" });
     }
 
@@ -579,12 +724,14 @@ export const atualizarStatusManutencao = async (req, res) => {
     );
 
     if (!usuarioPermitido) {
+      await transaction.rollback();
       return res.status(403).json({
         error: "Você não tem permissão para atualizar esta manutenção",
       });
     }
 
     if (manutencao.status === status) {
+      await transaction.rollback();
       return res
         .status(400)
         .json({ error: "A manutenção já está com este status" });
@@ -595,13 +742,39 @@ export const atualizarStatusManutencao = async (req, res) => {
     if (status === "CONCLUIDA") {
       dadosAtualizacao.resolvidoPorId = req.usuario.id;
       dadosAtualizacao.resolvidoEm = new Date();
+
+      // Só agora a peça planejada na criação é efetivamente descontada do
+      // carrinho do funcionário — se não tiver mais estoque suficiente
+      // (mudou desde a criação), bloqueia a conclusão em vez de deixar a
+      // manutenção "concluída" sem a peça de fato ter sido usada.
+      if (manutencao.pecaPlanejadaId && !manutencao.pecaPlanejadaConsumida) {
+        const resultadoPeca = await registrarUsoDePecaInterno({
+          manutencaoId: manutencao.id,
+          pecaId: manutencao.pecaPlanejadaId,
+          quantidade: manutencao.pecaPlanejadaQuantidade,
+          funcionarioId: manutencao.pecaPlanejadaFuncionarioId,
+          observacao: manutencao.pecaPlanejadaObservacao,
+          transaction,
+        });
+
+        if (resultadoPeca) {
+          await transaction.rollback();
+          return res.status(resultadoPeca.status).json({
+            error: `Não foi possível concluir: ${resultadoPeca.error}`,
+          });
+        }
+
+        dadosAtualizacao.pecaPlanejadaConsumida = true;
+      }
     } else if (manutencao.status === "CONCLUIDA") {
       dadosAtualizacao.resolvidoPorId = null;
       dadosAtualizacao.resolvidoEm = null;
     }
 
-    await manutencao.update(dadosAtualizacao);
-    await sincronizarStatusMaquina(manutencao.maquinaId);
+    await manutencao.update(dadosAtualizacao, { transaction });
+    await sincronizarStatusMaquina(manutencao.maquinaId, transaction);
+
+    await transaction.commit();
 
     const manutencaoAtualizada = await Manutencao.findByPk(manutencao.id, {
       include: includeAdmin,
@@ -609,6 +782,7 @@ export const atualizarStatusManutencao = async (req, res) => {
 
     res.json(manutencaoAtualizada);
   } catch (error) {
+    await transaction.rollback();
     console.error("Erro ao atualizar status da manutenção:", error);
     res.status(500).json({ error: "Erro ao atualizar status da manutenção" });
   }
@@ -642,12 +816,117 @@ export const registrarUsoPecaManutencao = async (req, res) => {
   const transaction = await sequelize.transaction();
 
   try {
-    const { pecaId, quantidade, observacao } = req.body;
+    const { pecaId, quantidade, observacao, funcionarioId } = req.body;
+
+    const manutencao = await Manutencao.findByPk(req.params.id, {
+      include: [
+        {
+          model: Usuario,
+          as: "funcionariosPermitidos",
+          attributes: ["id"],
+          through: { attributes: [] },
+        },
+      ],
+      transaction,
+    });
+
+    if (!manutencao) {
+      await transaction.rollback();
+      return res.status(404).json({ error: "Manutenção não encontrada" });
+    }
+
+    if (!usuarioPodeAgirNaManutencao(manutencao, req.usuario)) {
+      await transaction.rollback();
+      return res.status(403).json({
+        error: "Você não tem permissão para registrar uso de peça nesta manutenção",
+      });
+    }
+
+    // Por padrão, quem registra deduz do próprio carrinho. Só admin/dev/
+    // cadastro podem registrar em nome de outro funcionário.
+    const funcionarioAlvo = funcionarioId || req.usuario.id;
+    if (
+      funcionarioAlvo !== req.usuario.id &&
+      !["ADMIN", "DESENVOLVEDOR", "FUNCIONARIO_CADASTRO"].includes(
+        req.usuario.role,
+      )
+    ) {
+      await transaction.rollback();
+      return res.status(403).json({
+        error: "Você só pode registrar uso de peça do seu próprio carrinho",
+      });
+    }
+
+    const resultado = await registrarUsoDePecaInterno({
+      manutencaoId: manutencao.id,
+      pecaId,
+      quantidade,
+      funcionarioId: funcionarioAlvo,
+      observacao,
+      transaction,
+    });
+
+    if (resultado) {
+      await transaction.rollback();
+      return res.status(resultado.status).json({ error: resultado.error });
+    }
+
+    await transaction.commit();
+
+    const manutencaoAtualizada = await Manutencao.findByPk(manutencao.id, {
+      include: includeAdmin,
+    });
+
+    res.status(201).json(manutencaoAtualizada);
+  } catch (error) {
+    await transaction.rollback();
+    console.error("Erro ao registrar uso de peça na manutenção:", error);
+    res
+      .status(500)
+      .json({ error: "Erro ao registrar uso de peça na manutenção" });
+  }
+};
+
+export const listarPecasQuebradasManutencao = async (req, res) => {
+  try {
+    const manutencao = await Manutencao.findByPk(req.params.id);
+
+    if (!manutencao) {
+      return res.status(404).json({ error: "Manutenção não encontrada" });
+    }
+
+    const pecasQuebradas = await ManutencaoPecaQuebrada.findAll({
+      where: { manutencaoId: req.params.id },
+      include: [
+        { model: Peca, as: "peca", attributes: ["id", "codigo", "nome", "unidade"] },
+        { model: Usuario, as: "funcionario", attributes: ["id", "nome"] },
+      ],
+      order: [["dataDevolucao", "DESC"]],
+    });
+
+    res.json(pecasQuebradas);
+  } catch (error) {
+    console.error("Erro ao listar peças quebradas da manutenção:", error);
+    res
+      .status(500)
+      .json({ error: "Erro ao listar peças quebradas da manutenção" });
+  }
+};
+
+// Devolve peça quebrada removida/identificada durante a manutenção. Não
+// mexe no carrinho do funcionário nem no estoque bom — só soma no saldo
+// "quebrada" central da peça, separado, pra virar descarte/conserto/
+// reposição depois.
+export const registrarPecaQuebradaManutencao = async (req, res) => {
+  const transaction = await sequelize.transaction();
+
+  try {
+    const { pecaId, quantidade, observacao, funcionarioId } = req.body;
     const quantidadeNumerica = Number(quantidade);
 
     if (!pecaId) {
       await transaction.rollback();
-      return res.status(400).json({ error: "Selecione a peça utilizada" });
+      return res.status(400).json({ error: "Selecione a peça quebrada" });
     }
 
     if (!Number.isInteger(quantidadeNumerica) || quantidadeNumerica <= 0) {
@@ -677,41 +956,46 @@ export const registrarUsoPecaManutencao = async (req, res) => {
     if (!usuarioPodeAgirNaManutencao(manutencao, req.usuario)) {
       await transaction.rollback();
       return res.status(403).json({
-        error: "Você não tem permissão para registrar uso de peça nesta manutenção",
+        error:
+          "Você não tem permissão para registrar peça quebrada nesta manutenção",
       });
     }
 
-    const peca = await Peca.findByPk(pecaId, { transaction });
+    // Por padrão quem registra é quem devolveu; admin/dev/cadastro podem
+    // registrar em nome de outro funcionário.
+    const funcionarioAlvo = funcionarioId || req.usuario.id;
+    if (
+      funcionarioAlvo !== req.usuario.id &&
+      !["ADMIN", "DESENVOLVEDOR", "FUNCIONARIO_CADASTRO"].includes(
+        req.usuario.role,
+      )
+    ) {
+      await transaction.rollback();
+      return res.status(403).json({
+        error: "Você só pode registrar a devolução em seu próprio nome",
+      });
+    }
+
+    const peca = await Peca.findByPk(pecaId, {
+      transaction,
+      lock: transaction.LOCK.UPDATE,
+    });
     if (!peca) {
       await transaction.rollback();
       return res.status(400).json({ error: "Peça informada não encontrada" });
     }
 
-    const estoqueFuncionario = await EstoquePecaFuncionario.findOne({
-      where: { funcionarioId: req.usuario.id, pecaId },
-      transaction,
-      lock: transaction.LOCK.UPDATE,
-    });
-
-    const disponivel = estoqueFuncionario?.quantidade || 0;
-    if (disponivel < quantidadeNumerica) {
-      await transaction.rollback();
-      return res.status(400).json({
-        error: `Você não tem estoque suficiente dessa peça. Disponível: ${disponivel}, solicitado: ${quantidadeNumerica}.`,
-      });
-    }
-
-    await estoqueFuncionario.update(
-      { quantidade: disponivel - quantidadeNumerica },
+    await peca.update(
+      { quantidadeQuebrada: (peca.quantidadeQuebrada || 0) + quantidadeNumerica },
       { transaction },
     );
 
-    await ManutencaoPeca.create(
+    await ManutencaoPecaQuebrada.create(
       {
         manutencaoId: manutencao.id,
         pecaId,
         quantidade: quantidadeNumerica,
-        usuarioId: req.usuario.id,
+        funcionarioId: funcionarioAlvo,
         observacao: observacao || null,
       },
       { transaction },
@@ -726,10 +1010,10 @@ export const registrarUsoPecaManutencao = async (req, res) => {
     res.status(201).json(manutencaoAtualizada);
   } catch (error) {
     await transaction.rollback();
-    console.error("Erro ao registrar uso de peça na manutenção:", error);
+    console.error("Erro ao registrar peça quebrada na manutenção:", error);
     res
       .status(500)
-      .json({ error: "Erro ao registrar uso de peça na manutenção" });
+      .json({ error: "Erro ao registrar peça quebrada na manutenção" });
   }
 };
 

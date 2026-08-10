@@ -156,6 +156,9 @@ const startServer = async () => {
     await sequelize.query(`
       ALTER TYPE "enum_usuarios_role" ADD VALUE IF NOT EXISTS 'FUNCIONARIO_CADASTRO';
     `);
+    await sequelize.query(`
+      ALTER TYPE "enum_usuarios_role" ADD VALUE IF NOT EXISTS 'FUNCIONARIO_FABRICA';
+    `);
     const colunasMaquinas = await queryInterface.describeTable("maquinas");
     const colunasLojas = await queryInterface.describeTable("lojas");
 
@@ -203,6 +206,13 @@ const startServer = async () => {
             type: DataTypes.JSON,
             allowNull: false,
             defaultValue: [],
+          },
+        ],
+        [
+          "motivo_parada",
+          {
+            type: DataTypes.TEXT,
+            allowNull: true,
           },
         ],
       ];
@@ -338,6 +348,17 @@ const startServer = async () => {
         ["responsavelId", { type: DataTypes.UUID, allowNull: true }],
         ["tipoProblema", { type: DataTypes.STRING(50), allowNull: true }],
         ["prazo", { type: DataTypes.DATEONLY, allowNull: true }],
+        ["pecaPlanejadaId", { type: DataTypes.UUID, allowNull: true }],
+        [
+          "pecaPlanejadaFuncionarioId",
+          { type: DataTypes.UUID, allowNull: true },
+        ],
+        ["pecaPlanejadaQuantidade", { type: DataTypes.INTEGER, allowNull: true }],
+        ["pecaPlanejadaObservacao", { type: DataTypes.TEXT, allowNull: true }],
+        [
+          "pecaPlanejadaConsumida",
+          { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+        ],
       ];
 
       for (const [nomeColuna, definicao] of colunasNovasManutencoes) {
@@ -375,6 +396,20 @@ const startServer = async () => {
           ALTER TABLE manutencoes ALTER COLUMN status SET DEFAULT 'ABERTA';
         `);
         console.log("✅ Status das manutenções migrado para o novo fluxo!");
+      }
+    }
+
+    {
+      const { DataTypes } = await import("sequelize");
+      const colunasPecas = await queryInterface.describeTable("pecas");
+
+      if (!colunasPecas.quantidadeQuebrada) {
+        await queryInterface.addColumn("pecas", "quantidadeQuebrada", {
+          type: DataTypes.INTEGER,
+          allowNull: false,
+          defaultValue: 0,
+        });
+        console.log("✅ Coluna quantidadeQuebrada adicionada às peças!");
       }
     }
 

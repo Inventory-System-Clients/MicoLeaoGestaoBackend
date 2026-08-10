@@ -87,6 +87,26 @@ export const requireAdminOuCadastro = (req, res, next) => {
   next();
 };
 
+// Como requireAdminOuCadastro, mas também libera o Funcionário de Fábrica —
+// que só deve mexer em insumos, receitas e pedidos de pelúcia (a parte de
+// fabricação), nunca nas outras áreas de cadastro/operacional.
+export const requireAdminCadastroOuFabrica = (req, res, next) => {
+  if (!req.usuario || !req.usuario.role) {
+    return res
+      .status(401)
+      .json({ error: "Usuário não autenticado ou token inválido" });
+  }
+  if (
+    !isAdminDesenvolvedorOuCadastro(req.usuario.role) &&
+    req.usuario.role !== "FUNCIONARIO_FABRICA"
+  ) {
+    return res
+      .status(403)
+      .json({ error: "Acesso negado. Você não tem permissão para esta ação." });
+  }
+  next();
+};
+
 // US02 - Middleware de Verificação de Permissão em Loja
 export const verificarPermissaoLoja = (acao = "visualizar") => {
   return async (req, res, next) => {

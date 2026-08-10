@@ -131,11 +131,12 @@ export const criarUsuario = async (req, res) => {
       "FUNCIONARIO_ESTOQUE",
       "ENTREGADOR",
       "FUNCIONARIO_CADASTRO",
+      "FUNCIONARIO_FABRICA",
     ].includes(role);
     if (!roleValida) {
       return res.status(400).json({
         error:
-          "Role invalida. Use ADMIN, FUNCIONARIO, DESENVOLVEDOR, FUNCIONARIO_ESTOQUE, ENTREGADOR ou FUNCIONARIO_CADASTRO",
+          "Role invalida. Use ADMIN, FUNCIONARIO, DESENVOLVEDOR, FUNCIONARIO_ESTOQUE, ENTREGADOR, FUNCIONARIO_CADASTRO ou FUNCIONARIO_FABRICA",
       });
     }
 
@@ -208,11 +209,12 @@ export const atualizarUsuario = async (req, res) => {
         "FUNCIONARIO_ESTOQUE",
         "ENTREGADOR",
         "FUNCIONARIO_CADASTRO",
+        "FUNCIONARIO_FABRICA",
       ].includes(role)
     ) {
       return res.status(400).json({
         error:
-          "Role invalida. Use ADMIN, FUNCIONARIO, DESENVOLVEDOR, FUNCIONARIO_ESTOQUE, ENTREGADOR ou FUNCIONARIO_CADASTRO",
+          "Role invalida. Use ADMIN, FUNCIONARIO, DESENVOLVEDOR, FUNCIONARIO_ESTOQUE, ENTREGADOR, FUNCIONARIO_CADASTRO ou FUNCIONARIO_FABRICA",
       });
     }
 

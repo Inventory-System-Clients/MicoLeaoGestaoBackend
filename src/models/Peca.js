@@ -42,6 +42,16 @@ const Peca = sequelize.define(
       defaultValue: 0,
       comment: "Quantidade mínima para alerta de estoque baixo",
     },
+    quantidadeQuebrada: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      defaultValue: 0,
+      validate: {
+        min: 0,
+      },
+      comment:
+        "Peças devolvidas quebradas em manutenções, aguardando descarte/conserto/reposição — separado do estoque bom",
+    },
     custoUnitario: {
       type: DataTypes.DECIMAL(10, 2),
       allowNull: true,

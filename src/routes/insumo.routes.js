@@ -7,7 +7,7 @@ import {
   listarComprasInsumo,
   listarInsumos,
 } from "../controllers/insumoController.js";
-import { autenticar, registrarLog, requireAdminOuCadastro } from "../middlewares/auth.js";
+import { autenticar, registrarLog, requireAdminCadastroOuFabrica } from "../middlewares/auth.js";
 
 const router = express.Router();
 
@@ -17,25 +17,25 @@ router.get("/", listarInsumos);
 router.get("/compras", listarComprasInsumo);
 router.post(
   "/",
-  requireAdminOuCadastro,
+  requireAdminCadastroOuFabrica,
   registrarLog("CRIAR_INSUMO", "Insumo"),
   criarInsumo,
 );
 router.put(
   "/:id",
-  requireAdminOuCadastro,
+  requireAdminCadastroOuFabrica,
   registrarLog("EDITAR_INSUMO", "Insumo"),
   atualizarInsumo,
 );
 router.delete(
   "/:id",
-  requireAdminOuCadastro,
+  requireAdminCadastroOuFabrica,
   registrarLog("EXCLUIR_INSUMO", "Insumo"),
   deletarInsumo,
 );
 router.post(
   "/:id/compras",
-  requireAdminOuCadastro,
+  requireAdminCadastroOuFabrica,
   registrarLog("REGISTRAR_COMPRA_INSUMO", "InsumoCompra"),
   criarCompraInsumo,
 );

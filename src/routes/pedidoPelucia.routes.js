@@ -4,7 +4,7 @@ import {
   darBaixaPedidoPelucia,
   listarPedidosPelucia,
 } from "../controllers/pedidoPeluciaController.js";
-import { autenticar, registrarLog, requireAdminOuCadastro } from "../middlewares/auth.js";
+import { autenticar, registrarLog, requireAdminCadastroOuFabrica } from "../middlewares/auth.js";
 
 const router = express.Router();
 
@@ -13,13 +13,13 @@ router.use(autenticar);
 router.get("/", listarPedidosPelucia);
 router.post(
   "/",
-  requireAdminOuCadastro,
+  requireAdminCadastroOuFabrica,
   registrarLog("CRIAR_PEDIDO_PELUCIA", "PedidoPelucia"),
   criarPedidoPelucia,
 );
 router.patch(
   "/:id/baixa",
-  requireAdminOuCadastro,
+  requireAdminCadastroOuFabrica,
   registrarLog("BAIXA_PEDIDO_PELUCIA", "PedidoPelucia"),
   darBaixaPedidoPelucia,
 );

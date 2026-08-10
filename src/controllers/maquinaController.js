@@ -17,6 +17,13 @@ export const normalizarStatusOperacao = ({ lojaId, statusOperacao }) => {
   return status;
 };
 
+// Só mantém motivo quando a máquina está de fato PARADA; some junto com o status.
+const normalizarMotivoParada = ({ statusOperacao, motivoParada }) => {
+  if (statusOperacao !== "PARADA") return null;
+  const motivo = String(motivoParada || "").trim();
+  return motivo || null;
+};
+
 // US05 - Listar máquinas
 export const listarMaquinas = async (req, res) => {
   try {
@@ -86,6 +93,7 @@ export const criarMaquina = async (req, res) => {
       tipo,
       lojaId,
       statusOperacao,
+      motivoParada,
       capacidadePadrao,
       valorFicha,
       fichasNecessarias,
@@ -110,15 +118,20 @@ export const criarMaquina = async (req, res) => {
     }
 
     const lojaNormalizada = normalizarLojaId(lojaId);
+    const statusFinal = normalizarStatusOperacao({
+      lojaId: lojaNormalizada,
+      statusOperacao,
+    });
 
     const maquina = await Maquina.create({
       codigo,
       nome,
       tipo,
       lojaId: lojaNormalizada,
-      statusOperacao: normalizarStatusOperacao({
-        lojaId: lojaNormalizada,
-        statusOperacao,
+      statusOperacao: statusFinal,
+      motivoParada: normalizarMotivoParada({
+        statusOperacao: statusFinal,
+        motivoParada,
       }),
       capacidadePadrao: capacidadePadrao || 100,
       valorFicha: valorFicha || 5.0,
@@ -156,6 +169,7 @@ export const atualizarMaquina = async (req, res) => {
       tipo,
       lojaId,
       statusOperacao,
+      motivoParada,
       capacidadePadrao,
       valorFicha,
       fichasNecessarias,
@@ -180,15 +194,20 @@ export const atualizarMaquina = async (req, res) => {
 
     const lojaNormalizada =
       lojaId !== undefined ? normalizarLojaId(lojaId) : maquina.lojaId;
+    const statusFinal = normalizarStatusOperacao({
+      lojaId: lojaNormalizada,
+      statusOperacao: statusOperacao ?? maquina.statusOperacao,
+    });
 
     await maquina.update({
       codigo: codigo ?? maquina.codigo,
       nome: nome ?? maquina.nome,
       tipo: tipo ?? maquina.tipo,
       lojaId: lojaNormalizada,
-      statusOperacao: normalizarStatusOperacao({
-        lojaId: lojaNormalizada,
-        statusOperacao: statusOperacao ?? maquina.statusOperacao,
+      statusOperacao: statusFinal,
+      motivoParada: normalizarMotivoParada({
+        statusOperacao: statusFinal,
+        motivoParada: motivoParada !== undefined ? motivoParada : maquina.motivoParada,
       }),
       capacidadePadrao: capacidadePadrao ?? maquina.capacidadePadrao,
       valorFicha: valorFicha ?? maquina.valorFicha,

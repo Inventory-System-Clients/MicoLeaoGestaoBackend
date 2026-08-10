@@ -40,6 +40,12 @@ const Maquina = sequelize.define(
       comment:
         "Status operacional: EM_OPERACAO, EM_MANUTENCAO, PRONTA_PARA_SAIDA, PARADA ou SEM_LOJA",
     },
+    motivoParada: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      field: "motivo_parada",
+      comment: "Motivo pelo qual a máquina está com status PARADA",
+    },
     capacidadePadrao: {
       type: DataTypes.INTEGER,
       allowNull: false,

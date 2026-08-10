@@ -39,6 +39,7 @@ import Peca from "./Peca.js";
 import EstoquePecaFuncionario from "./EstoquePecaFuncionario.js";
 import MovimentacaoPeca from "./MovimentacaoPeca.js";
 import ManutencaoPeca from "./ManutencaoPeca.js";
+import ManutencaoPecaQuebrada from "./ManutencaoPecaQuebrada.js";
 import Envio from "./Envio.js";
 import Lacre from "./Lacre.js";
 import ItemLacre from "./ItemLacre.js";
@@ -287,6 +288,15 @@ Manutencao.belongsTo(Usuario, {
   as: "responsavel",
 });
 
+Manutencao.belongsTo(Peca, {
+  foreignKey: "pecaPlanejadaId",
+  as: "pecaPlanejada",
+});
+Manutencao.belongsTo(Usuario, {
+  foreignKey: "pecaPlanejadaFuncionarioId",
+  as: "pecaPlanejadaFuncionario",
+});
+
 AlertaMovimentacao.belongsTo(Maquina, {
   foreignKey: "maquinaId",
   as: "maquina",
@@ -516,6 +526,20 @@ ManutencaoPeca.belongsTo(Manutencao, {
 ManutencaoPeca.belongsTo(Peca, { foreignKey: "pecaId", as: "peca" });
 ManutencaoPeca.belongsTo(Usuario, { foreignKey: "usuarioId", as: "usuario" });
 
+Manutencao.hasMany(ManutencaoPecaQuebrada, {
+  foreignKey: "manutencaoId",
+  as: "pecasQuebradas",
+});
+ManutencaoPecaQuebrada.belongsTo(Manutencao, {
+  foreignKey: "manutencaoId",
+  as: "manutencao",
+});
+ManutencaoPecaQuebrada.belongsTo(Peca, { foreignKey: "pecaId", as: "peca" });
+ManutencaoPecaQuebrada.belongsTo(Usuario, {
+  foreignKey: "funcionarioId",
+  as: "funcionario",
+});
+
 Loja.hasMany(Envio, { foreignKey: "lojaDestinoId", as: "enviosRecebidos" });
 Envio.belongsTo(Loja, { foreignKey: "lojaDestinoId", as: "lojaDestino" });
 Envio.belongsTo(Usuario, { foreignKey: "separadoPorId", as: "separadoPor" });
@@ -602,6 +626,7 @@ export {
   EstoquePecaFuncionario,
   MovimentacaoPeca,
   ManutencaoPeca,
+  ManutencaoPecaQuebrada,
   Envio,
   Lacre,
   ItemLacre,

@@ -85,6 +85,39 @@ const Manutencao = sequelize.define(
       type: DataTypes.DATE,
       allowNull: true,
     },
+    pecaPlanejadaId: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      references: {
+        model: "pecas",
+        key: "id",
+      },
+      comment: "Peça escolhida na criação, ainda não descontada do carrinho",
+    },
+    pecaPlanejadaFuncionarioId: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      references: {
+        model: "usuarios",
+        key: "id",
+      },
+      comment: "Funcionário do carrinho de onde a peça planejada vai sair",
+    },
+    pecaPlanejadaQuantidade: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+    pecaPlanejadaObservacao: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
+    pecaPlanejadaConsumida: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+      comment:
+        "Vira true quando a manutenção é concluída e a peça planejada é efetivamente descontada do carrinho",
+    },
   },
   {
     tableName: "manutencoes",
