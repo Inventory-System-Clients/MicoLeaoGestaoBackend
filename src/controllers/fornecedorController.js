@@ -53,9 +53,6 @@ const normalizarFornecedor = (body) => {
     : [];
 
   if (!nome) throw new Error("Nome do fornecedor e obrigatorio");
-  if (produtos.length === 0) {
-    throw new Error("Informe pelo menos um produto com quantidade e preco");
-  }
 
   return {
     fornecedor: {
