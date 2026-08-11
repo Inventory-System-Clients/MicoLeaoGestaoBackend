@@ -212,6 +212,14 @@ const startServer = async () => {
             allowNull: true,
           },
         ],
+        [
+          "auditoria",
+          {
+            type: DataTypes.BOOLEAN,
+            allowNull: false,
+            defaultValue: false,
+          },
+        ],
       ];
 
       for (const [nomeColuna, definicao] of colunasNovasMaquinas) {

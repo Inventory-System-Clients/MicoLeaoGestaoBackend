@@ -112,6 +112,7 @@ export const criarMaquina = async (req, res) => {
       percentualAlertaEstoque,
       localizacao,
       datasAuditoria,
+      auditoria,
     } = req.body;
 
     if (!codigo) {
@@ -151,6 +152,7 @@ export const criarMaquina = async (req, res) => {
       percentualAlertaEstoque: percentualAlertaEstoque || 30,
       localizacao,
       datasAuditoria: normalizarDatasAuditoria(datasAuditoria),
+      auditoria: Boolean(auditoria),
     });
 
     res.locals.entityId = maquina.id;
@@ -189,6 +191,7 @@ export const atualizarMaquina = async (req, res) => {
       localizacao,
       ativo,
       datasAuditoria,
+      auditoria,
     } = req.body;
 
     // Verificar se novo código já existe em outra máquina
@@ -233,6 +236,7 @@ export const atualizarMaquina = async (req, res) => {
         datasAuditoria !== undefined
           ? normalizarDatasAuditoria(datasAuditoria)
           : maquina.datasAuditoria,
+      auditoria: auditoria !== undefined ? Boolean(auditoria) : maquina.auditoria,
     });
 
     res.json(maquina);

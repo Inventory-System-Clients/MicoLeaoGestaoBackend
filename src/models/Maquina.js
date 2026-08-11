@@ -130,6 +130,12 @@ const Maquina = sequelize.define(
       field: "datas_auditoria",
       comment: "Lista de datas (YYYY-MM-DD) em que a máquina passa por auditoria manual",
     },
+    auditoria: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+      comment: "Se a máquina passa por auditoria (campo de cadastro, ainda sem uso na lógica do sistema)",
+    },
     ativo: {
       type: DataTypes.BOOLEAN,
       defaultValue: true,
