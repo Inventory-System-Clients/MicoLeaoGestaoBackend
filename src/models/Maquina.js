@@ -58,6 +58,13 @@ const Maquina = sequelize.define(
       defaultValue: 5.0,
       comment: "Valor em R$ de cada ficha",
     },
+    valorJogada: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: true,
+      field: "valor_jogada",
+      comment:
+        "Valor em R$ de cada jogada (categoria MAQUINA, que não tem ficha própria; usado com o contador IN)",
+    },
     fichasNecessarias: {
       type: DataTypes.INTEGER,
       allowNull: true,
@@ -135,6 +142,25 @@ const Maquina = sequelize.define(
       allowNull: false,
       defaultValue: false,
       comment: "Se a máquina passa por auditoria (campo de cadastro, ainda sem uso na lógica do sistema)",
+    },
+    geradoraReceita: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: true,
+      field: "geradora_receita",
+      comment: "Se a máquina gera receita diretamente (ficha/venda)",
+    },
+    categoriaGeradora: {
+      type: DataTypes.STRING(20),
+      allowNull: true,
+      field: "categoria_geradora",
+      comment:
+        "Quando geradoraReceita=true: TROCADORA (só troca dinheiro por ficha) ou MAQUINA (jogo com prêmio)",
+    },
+    telemetria: {
+      type: DataTypes.STRING(100),
+      allowNull: true,
+      comment: "Identificador de telemetria da máquina (texto livre, reaproveitado entre cadastros)",
     },
     ativo: {
       type: DataTypes.BOOLEAN,

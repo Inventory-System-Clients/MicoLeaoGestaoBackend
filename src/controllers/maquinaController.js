@@ -31,6 +31,43 @@ const normalizarMotivoParada = ({ statusOperacao, motivoParada }) => {
   return motivo || null;
 };
 
+// Trocadora não tem produto (usa "Ficha") nem jogadas por pelúcia; categoria/telemetria
+// só existem quando a máquina de fato gera receita.
+const normalizarCamposGeradora = ({
+  geradoraReceita,
+  categoriaGeradora,
+  telemetria,
+  nome,
+  jogadasBoasPorPelucia,
+}) => {
+  if (!geradoraReceita) {
+    return {
+      categoriaGeradora: null,
+      telemetria: null,
+      nome,
+      jogadasBoasPorPelucia,
+    };
+  }
+
+  const categoria = String(categoriaGeradora || "").toUpperCase();
+
+  if (categoria === "TROCADORA") {
+    return {
+      categoriaGeradora: "TROCADORA",
+      telemetria: null,
+      nome: nome || "Ficha",
+      jogadasBoasPorPelucia: null,
+    };
+  }
+
+  return {
+    categoriaGeradora: "MAQUINA",
+    telemetria: String(telemetria || "").trim() || null,
+    nome,
+    jogadasBoasPorPelucia,
+  };
+};
+
 // US05 - Listar máquinas
 export const listarMaquinas = async (req, res) => {
   try {
@@ -103,6 +140,7 @@ export const criarMaquina = async (req, res) => {
       motivoParada,
       capacidadePadrao,
       valorFicha,
+      valorJogada,
       fichasNecessarias,
       jogadasBoasPorPelucia,
       forcaForte,
@@ -113,6 +151,9 @@ export const criarMaquina = async (req, res) => {
       localizacao,
       datasAuditoria,
       auditoria,
+      geradoraReceita,
+      categoriaGeradora,
+      telemetria,
     } = req.body;
 
     if (!codigo) {
@@ -131,9 +172,42 @@ export const criarMaquina = async (req, res) => {
       statusOperacao,
     });
 
+    const geradoraReceitaFinal = geradoraReceita === undefined ? true : Boolean(geradoraReceita);
+    const camposGeradora = normalizarCamposGeradora({
+      geradoraReceita: geradoraReceitaFinal,
+      categoriaGeradora,
+      telemetria,
+      nome,
+      jogadasBoasPorPelucia: jogadasBoasPorPelucia || null,
+    });
+
+    if (
+      geradoraReceitaFinal &&
+      camposGeradora.categoriaGeradora === "TROCADORA" &&
+      !(valorFicha > 0)
+    ) {
+      return res.status(400).json({ error: "Informe o valor da ficha para a trocadora" });
+    }
+
+    if (
+      geradoraReceitaFinal &&
+      camposGeradora.categoriaGeradora === "MAQUINA" &&
+      !(valorJogada > 0)
+    ) {
+      return res.status(400).json({ error: "Informe o valor da jogada para a máquina" });
+    }
+
+    // Máquina (categoria MAQUINA) não tem ficha própria: o sistema se baseia no
+    // contador IN das coletas usando o valor da jogada, então zera valorFicha em
+    // vez de cair no default de 5. Trocadora não usa valor da jogada.
+    const valorFichaFinal =
+      camposGeradora.categoriaGeradora === "MAQUINA" ? 0 : valorFicha || 5.0;
+    const valorJogadaFinal =
+      camposGeradora.categoriaGeradora === "MAQUINA" ? valorJogada || null : null;
+
     const maquina = await Maquina.create({
       codigo,
-      nome,
+      nome: camposGeradora.nome,
       tipo,
       lojaId: lojaNormalizada,
       statusOperacao: statusFinal,
@@ -142,9 +216,13 @@ export const criarMaquina = async (req, res) => {
         motivoParada,
       }),
       capacidadePadrao: capacidadePadrao || 100,
-      valorFicha: valorFicha || 5.0,
+      geradoraReceita: geradoraReceitaFinal,
+      categoriaGeradora: camposGeradora.categoriaGeradora,
+      telemetria: camposGeradora.telemetria,
+      valorFicha: valorFichaFinal,
+      valorJogada: valorJogadaFinal,
       fichasNecessarias: fichasNecessarias || null,
-      jogadasBoasPorPelucia: jogadasBoasPorPelucia || null,
+      jogadasBoasPorPelucia: camposGeradora.jogadasBoasPorPelucia,
       forcaForte: forcaForte || null,
       forcaFraca: forcaFraca || null,
       forcaPremium: forcaPremium || null,
@@ -181,6 +259,7 @@ export const atualizarMaquina = async (req, res) => {
       motivoParada,
       capacidadePadrao,
       valorFicha,
+      valorJogada,
       fichasNecessarias,
       jogadasBoasPorPelucia,
       forcaForte,
@@ -192,6 +271,9 @@ export const atualizarMaquina = async (req, res) => {
       ativo,
       datasAuditoria,
       auditoria,
+      geradoraReceita,
+      categoriaGeradora,
+      telemetria,
     } = req.body;
 
     // Verificar se novo código já existe em outra máquina
@@ -209,9 +291,51 @@ export const atualizarMaquina = async (req, res) => {
       statusOperacao: statusOperacao ?? maquina.statusOperacao,
     });
 
+    const geradoraReceitaFinal =
+      geradoraReceita !== undefined ? Boolean(geradoraReceita) : maquina.geradoraReceita;
+    const camposGeradora = normalizarCamposGeradora({
+      geradoraReceita: geradoraReceitaFinal,
+      categoriaGeradora:
+        categoriaGeradora !== undefined ? categoriaGeradora : maquina.categoriaGeradora,
+      telemetria: telemetria !== undefined ? telemetria : maquina.telemetria,
+      nome: nome !== undefined ? nome : maquina.nome,
+      jogadasBoasPorPelucia:
+        jogadasBoasPorPelucia !== undefined
+          ? jogadasBoasPorPelucia
+          : maquina.jogadasBoasPorPelucia,
+    });
+
+    if (
+      geradoraReceitaFinal &&
+      camposGeradora.categoriaGeradora === "TROCADORA" &&
+      !((valorFicha ?? maquina.valorFicha) > 0)
+    ) {
+      return res.status(400).json({ error: "Informe o valor da ficha para a trocadora" });
+    }
+
+    if (
+      geradoraReceitaFinal &&
+      camposGeradora.categoriaGeradora === "MAQUINA" &&
+      !((valorJogada ?? maquina.valorJogada) > 0)
+    ) {
+      return res.status(400).json({ error: "Informe o valor da jogada para a máquina" });
+    }
+
+    // Máquina (categoria MAQUINA) não tem ficha própria: o sistema se baseia no
+    // contador IN das coletas usando o valor da jogada, então zera valorFicha em
+    // vez de manter valor antigo. Trocadora não usa valor da jogada.
+    const valorFichaFinal =
+      camposGeradora.categoriaGeradora === "MAQUINA"
+        ? 0
+        : valorFicha ?? maquina.valorFicha;
+    const valorJogadaFinal =
+      camposGeradora.categoriaGeradora === "MAQUINA"
+        ? valorJogada ?? maquina.valorJogada
+        : null;
+
     await maquina.update({
       codigo: codigo ?? maquina.codigo,
-      nome: nome ?? maquina.nome,
+      nome: camposGeradora.nome,
       tipo: tipo ?? maquina.tipo,
       lojaId: lojaNormalizada,
       statusOperacao: statusFinal,
@@ -220,11 +344,14 @@ export const atualizarMaquina = async (req, res) => {
         motivoParada: motivoParada !== undefined ? motivoParada : maquina.motivoParada,
       }),
       capacidadePadrao: capacidadePadrao ?? maquina.capacidadePadrao,
-      valorFicha: valorFicha ?? maquina.valorFicha,
+      geradoraReceita: geradoraReceitaFinal,
+      categoriaGeradora: camposGeradora.categoriaGeradora,
+      telemetria: camposGeradora.telemetria,
+      valorFicha: valorFichaFinal,
+      valorJogada: valorJogadaFinal,
       fichasNecessarias:
         fichasNecessarias !== undefined ? fichasNecessarias : maquina.fichasNecessarias,
-      jogadasBoasPorPelucia:
-        jogadasBoasPorPelucia ?? maquina.jogadasBoasPorPelucia,
+      jogadasBoasPorPelucia: camposGeradora.jogadasBoasPorPelucia,
       forcaForte: forcaForte ?? maquina.forcaForte,
       forcaFraca: forcaFraca ?? maquina.forcaFraca,
       forcaPremium: forcaPremium ?? maquina.forcaPremium,

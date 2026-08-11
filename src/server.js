@@ -220,6 +220,35 @@ const startServer = async () => {
             defaultValue: false,
           },
         ],
+        [
+          "geradora_receita",
+          {
+            type: DataTypes.BOOLEAN,
+            allowNull: false,
+            defaultValue: true,
+          },
+        ],
+        [
+          "categoria_geradora",
+          {
+            type: DataTypes.STRING(20),
+            allowNull: true,
+          },
+        ],
+        [
+          "telemetria",
+          {
+            type: DataTypes.STRING(100),
+            allowNull: true,
+          },
+        ],
+        [
+          "valor_jogada",
+          {
+            type: DataTypes.DECIMAL(10, 2),
+            allowNull: true,
+          },
+        ],
       ];
 
       for (const [nomeColuna, definicao] of colunasNovasMaquinas) {

@@ -2259,16 +2259,17 @@ export const alertasBomDesempenho = async (req, res) => {
 
     for (const maquina of maquinas) {
       const jogadasEsperadas = Number(maquina.jogadasBoasPorPelucia || 0);
+      // Máquina (categoria MAQUINA) não tem ficha própria: usa o valor da
+      // jogada (R$) direto com o contador IN, em vez de valorFicha*fichas.
+      const semFichaPropria = maquina.categoriaGeradora === "MAQUINA";
       const valorFicha = Number(maquina.valorFicha || 0);
       const fichasParaJogar = Number(maquina.fichasNecessarias || 1);
-      const valorPorJogada = Number((valorFicha * fichasParaJogar).toFixed(2));
+      const valorJogada = Number(maquina.valorJogada || 0);
+      const valorPorJogada = semFichaPropria
+        ? valorJogada
+        : Number((valorFicha * fichasParaJogar).toFixed(2));
 
-      if (
-        jogadasEsperadas <= 0 ||
-        valorFicha <= 0 ||
-        fichasParaJogar <= 0 ||
-        valorPorJogada <= 0
-      ) {
+      if (jogadasEsperadas <= 0 || valorPorJogada <= 0) {
         continue;
       }
 
