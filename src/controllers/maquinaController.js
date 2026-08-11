@@ -221,7 +221,8 @@ export const atualizarMaquina = async (req, res) => {
       }),
       capacidadePadrao: capacidadePadrao ?? maquina.capacidadePadrao,
       valorFicha: valorFicha ?? maquina.valorFicha,
-      fichasNecessarias: fichasNecessarias ?? maquina.fichasNecessarias,
+      fichasNecessarias:
+        fichasNecessarias !== undefined ? fichasNecessarias : maquina.fichasNecessarias,
       jogadasBoasPorPelucia:
         jogadasBoasPorPelucia ?? maquina.jogadasBoasPorPelucia,
       forcaForte: forcaForte ?? maquina.forcaForte,
