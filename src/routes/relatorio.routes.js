@@ -14,6 +14,7 @@ import {
   alertasMovimentacaoOut,
   alertasMovimentacaoIn,
   alertasBomDesempenho,
+  relatorioTransferenciasMaquinas,
 } from "../controllers/relatorioController.js";
 import { alertasAbastecimentoIncompleto } from "../controllers/movimentacaoController.js";
 import { autenticar, autorizarRole } from "../middlewares/auth.js";
@@ -115,6 +116,12 @@ router.get(
   autenticar,
   autorizarRole("ADMIN", "FUNCIONARIO_CADASTRO"),
   alertasAbastecimentoIncompleto,
+);
+router.get(
+  "/transferencias-maquinas",
+  autenticar,
+  autorizarRole("ADMIN", "FUNCIONARIO_CADASTRO"),
+  relatorioTransferenciasMaquinas,
 );
 
 export default router;

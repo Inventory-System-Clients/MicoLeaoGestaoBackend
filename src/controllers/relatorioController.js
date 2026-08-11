@@ -82,6 +82,7 @@ import {
   RegistroDinheiro,
   Sangria,
   GastoVariavel,
+  TransferenciaMaquina,
 } from "../models/index.js";
 import { calcularGastoFixoProporcionalPeriodo } from "../services/gastoFixoService.js";
 
@@ -2366,6 +2367,61 @@ export const alertasBomDesempenho = async (req, res) => {
   } catch (error) {
     res.status(500).json({
       error: "Erro ao buscar alertas de jogadas fora do esperado",
+      message: error.message,
+    });
+  }
+};
+
+// Rastreabilidade: todas as transferências de máquinas entre lojas/galpão,
+// com filtros (usado no relatório "Transferências de Máquinas")
+export const relatorioTransferenciasMaquinas = async (req, res) => {
+  try {
+    const { maquina, lojaId, dataInicio, dataFim } = req.query;
+
+    const where = {};
+    if (dataInicio || dataFim) {
+      where.dataTransferencia = {};
+      if (dataInicio) where.dataTransferencia[Op.gte] = dataInicio;
+      if (dataFim) where.dataTransferencia[Op.lte] = dataFim;
+    }
+    if (lojaId) {
+      where[Op.or] = [{ lojaOrigemId: lojaId }, { lojaDestinoId: lojaId }];
+    }
+
+    const includeMaquina = {
+      model: Maquina,
+      as: "maquina",
+      attributes: ["id", "codigo", "nome", "tipo"],
+    };
+    if (maquina) {
+      includeMaquina.where = {
+        [Op.or]: [
+          { codigo: { [Op.iLike]: `%${maquina}%` } },
+          { nome: { [Op.iLike]: `%${maquina}%` } },
+        ],
+      };
+      includeMaquina.required = true;
+    }
+
+    const transferencias = await TransferenciaMaquina.findAll({
+      where,
+      include: [
+        includeMaquina,
+        { model: Loja, as: "lojaOrigem", attributes: ["id", "nome"] },
+        { model: Loja, as: "lojaDestino", attributes: ["id", "nome"] },
+        { model: Usuario, as: "usuario", attributes: ["id", "nome"] },
+      ],
+      order: [
+        ["dataTransferencia", "DESC"],
+        ["createdAt", "DESC"],
+      ],
+    });
+
+    res.json(transferencias);
+  } catch (error) {
+    console.error("Erro ao gerar relatório de transferências de máquinas:", error);
+    res.status(500).json({
+      error: "Erro ao gerar relatório de transferências de máquinas",
       message: error.message,
     });
   }
