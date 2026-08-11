@@ -163,15 +163,12 @@ const startServer = async () => {
     const colunasLojas = await queryInterface.describeTable("lojas");
 
     {
-      const { DataTypes } = await import("sequelize");
       if (colunasMaquinas.lojaId?.allowNull === false) {
-        await queryInterface.changeColumn("maquinas", "lojaId", {
-          type: DataTypes.UUID,
-          allowNull: true,
-          references: { model: "lojas", key: "id" },
-          onUpdate: "CASCADE",
-          onDelete: "SET NULL",
-        });
+        // queryInterface.changeColumn com "references" não estava emitindo o
+        // DROP NOT NULL no Postgres (só recriava a FK) — por isso o SQL direto.
+        await sequelize.query(
+          'ALTER TABLE "maquinas" ALTER COLUMN "lojaId" DROP NOT NULL;',
+        );
         console.log("✅ Coluna lojaId das máquinas agora aceita sem loja!");
       }
     }

@@ -6,6 +6,8 @@ import {
   atualizarMaquina,
   deletarMaquina,
   obterEstoqueAtual,
+  transferirMaquina,
+  listarTransferenciasMaquina,
 } from "../controllers/maquinaController.js";
 import { produtoSugeridoPorMaquina } from "../controllers/produtoSugeridoController.js";
 import {
@@ -22,6 +24,14 @@ router.get("/:id", autenticar, obterMaquina);
 router.get("/:id/estoque", autenticar, obterEstoqueAtual);
 router.get("/:id/produto-sugerido", autenticar, produtoSugeridoPorMaquina);
 router.get("/:id/problema", autenticar, problemaMaquina);
+router.get("/:id/transferencias", autenticar, listarTransferenciasMaquina);
+router.post(
+  "/:id/transferir",
+  autenticar,
+  autorizarRole("ADMIN", "FUNCIONARIO_CADASTRO"),
+  registrarLog("TRANSFERIR_MAQUINA", "Maquina"),
+  transferirMaquina,
+);
 router.post(
   "/",
   autenticar,

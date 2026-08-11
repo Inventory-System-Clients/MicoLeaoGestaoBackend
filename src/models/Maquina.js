@@ -26,7 +26,7 @@ const Maquina = sequelize.define(
     },
     lojaId: {
       type: DataTypes.UUID,
-      allowNull: false,
+      allowNull: true,
       references: {
         model: "lojas",
         key: "id",

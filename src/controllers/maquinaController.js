@@ -1,4 +1,11 @@
-import { Maquina, Loja, Movimentacao } from "../models/index.js";
+import {
+  Maquina,
+  Loja,
+  Movimentacao,
+  TransferenciaMaquina,
+  Usuario,
+} from "../models/index.js";
+import { sequelize } from "../database/connection.js";
 
 const normalizarLojaId = (lojaId) => (lojaId ? lojaId : null);
 
@@ -325,5 +332,119 @@ export const obterEstoqueAtual = async (req, res) => {
   } catch (error) {
     console.error("❌ [obterEstoqueAtual] Erro ao obter estoque:", error);
     res.status(500).json({ error: "Erro ao obter estoque" });
+  }
+};
+
+// Transferir máquina para outra loja (ou para o galpão) sem criar um novo cadastro
+export const transferirMaquina = async (req, res) => {
+  const transaction = await sequelize.transaction();
+
+  try {
+    const { id } = req.params;
+    const { lojaDestinoId, dataTransferencia, observacao } = req.body;
+
+    const maquina = await Maquina.findByPk(id, { transaction });
+    if (!maquina) {
+      await transaction.rollback();
+      return res.status(404).json({ error: "Máquina não encontrada" });
+    }
+
+    if (!dataTransferencia || !/^\d{4}-\d{2}-\d{2}$/.test(dataTransferencia)) {
+      await transaction.rollback();
+      return res
+        .status(400)
+        .json({ error: "Informe a data da transferência" });
+    }
+
+    const lojaDestinoNormalizada = lojaDestinoId || null;
+
+    if (lojaDestinoNormalizada) {
+      const lojaDestino = await Loja.findByPk(lojaDestinoNormalizada, {
+        transaction,
+      });
+      if (!lojaDestino) {
+        await transaction.rollback();
+        return res
+          .status(400)
+          .json({ error: "Loja de destino não encontrada" });
+      }
+    }
+
+    const lojaOrigemId = maquina.lojaId || null;
+
+    if (lojaOrigemId === lojaDestinoNormalizada) {
+      await transaction.rollback();
+      return res.status(400).json({
+        error: lojaDestinoNormalizada
+          ? "A máquina já está nessa loja"
+          : "A máquina já está no galpão",
+      });
+    }
+
+    const statusFinal = lojaDestinoNormalizada ? "EM_OPERACAO" : "PARADA";
+    const motivoParadaFinal = lojaDestinoNormalizada
+      ? null
+      : (observacao && observacao.trim()) || "Transferida para o galpão";
+
+    await maquina.update(
+      {
+        lojaId: lojaDestinoNormalizada,
+        statusOperacao: statusFinal,
+        motivoParada: motivoParadaFinal,
+      },
+      { transaction },
+    );
+
+    const transferencia = await TransferenciaMaquina.create(
+      {
+        maquinaId: maquina.id,
+        lojaOrigemId,
+        lojaDestinoId: lojaDestinoNormalizada,
+        dataTransferencia,
+        usuarioId: req.usuario.id,
+        observacao: observacao?.trim() || null,
+      },
+      { transaction },
+    );
+
+    await transaction.commit();
+
+    const maquinaAtualizada = await Maquina.findByPk(maquina.id, {
+      include: [
+        { model: Loja, as: "loja", attributes: ["id", "nome", "cidade"] },
+      ],
+    });
+
+    res.locals.entityId = maquina.id;
+    res.json({ maquina: maquinaAtualizada, transferencia });
+  } catch (error) {
+    await transaction.rollback();
+    console.error("Erro ao transferir máquina:", error);
+    res.status(500).json({ error: "Erro ao transferir máquina" });
+  }
+};
+
+// Histórico de transferências de uma máquina
+export const listarTransferenciasMaquina = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const transferencias = await TransferenciaMaquina.findAll({
+      where: { maquinaId: id },
+      include: [
+        { model: Loja, as: "lojaOrigem", attributes: ["id", "nome"] },
+        { model: Loja, as: "lojaDestino", attributes: ["id", "nome"] },
+        { model: Usuario, as: "usuario", attributes: ["id", "nome"] },
+      ],
+      order: [
+        ["dataTransferencia", "DESC"],
+        ["createdAt", "DESC"],
+      ],
+    });
+
+    res.json(transferencias);
+  } catch (error) {
+    console.error("Erro ao listar transferências da máquina:", error);
+    res.status(500).json({ error: "Erro ao listar transferências da máquina" });
   }
 };

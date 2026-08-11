@@ -1,23 +1,17 @@
 "use strict";
 
 module.exports = {
-  up: async (queryInterface, Sequelize) => {
-    await queryInterface.changeColumn("maquinas", "lojaId", {
-      type: Sequelize.UUID,
-      allowNull: true,
-      references: { model: "lojas", key: "id" },
-      onUpdate: "CASCADE",
-      onDelete: "SET NULL",
-    });
+  up: async (queryInterface) => {
+    // queryInterface.changeColumn com "references" não emite o DROP NOT NULL
+    // no Postgres (só recria a FK) — por isso o SQL direto.
+    await queryInterface.sequelize.query(
+      'ALTER TABLE "maquinas" ALTER COLUMN "lojaId" DROP NOT NULL;',
+    );
   },
 
-  down: async (queryInterface, Sequelize) => {
-    await queryInterface.changeColumn("maquinas", "lojaId", {
-      type: Sequelize.UUID,
-      allowNull: false,
-      references: { model: "lojas", key: "id" },
-      onUpdate: "CASCADE",
-      onDelete: "RESTRICT",
-    });
+  down: async (queryInterface) => {
+    await queryInterface.sequelize.query(
+      'ALTER TABLE "maquinas" ALTER COLUMN "lojaId" SET NOT NULL;',
+    );
   },
 };

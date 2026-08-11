@@ -44,6 +44,7 @@ import Envio from "./Envio.js";
 import Lacre from "./Lacre.js";
 import ItemLacre from "./ItemLacre.js";
 import Compra from "./Compra.js";
+import TransferenciaMaquina from "./TransferenciaMaquina.js";
 // MovimentaÃ§Ã£o de VeÃ­culo -> VeÃ­culo e UsuÃ¡rio
 MovimentacaoVeiculo.belongsTo(Veiculo, {
   as: "veiculo",
@@ -584,6 +585,27 @@ RegistroDinheiro.belongsTo(Usuario, {
   as: "alertaBlinkResolvidoPor",
 });
 
+Maquina.hasMany(TransferenciaMaquina, {
+  foreignKey: "maquinaId",
+  as: "transferencias",
+});
+TransferenciaMaquina.belongsTo(Maquina, {
+  foreignKey: "maquinaId",
+  as: "maquina",
+});
+TransferenciaMaquina.belongsTo(Loja, {
+  foreignKey: "lojaOrigemId",
+  as: "lojaOrigem",
+});
+TransferenciaMaquina.belongsTo(Loja, {
+  foreignKey: "lojaDestinoId",
+  as: "lojaDestino",
+});
+TransferenciaMaquina.belongsTo(Usuario, {
+  foreignKey: "usuarioId",
+  as: "usuario",
+});
+
 export {
   Usuario,
   Loja,
@@ -631,5 +653,6 @@ export {
   Lacre,
   ItemLacre,
   Compra,
+  TransferenciaMaquina,
 };
 
