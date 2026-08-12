@@ -74,6 +74,7 @@ import {
   Loja,
   Produto,
   Compra,
+  CompraItem,
   Fornecedor,
   Insumo,
   Peca,
@@ -1275,15 +1276,19 @@ export const gerarRelatorioImpressaoPorLoja = async ({
     fim,
   );
 
-  const comprasOperacionais = await Compra.findAll({
+  const itensRecebidos = await CompraItem.findAll({
     where: {
-      status: "RECEBIDO",
       lojaId,
-      recebidoEm: { [Op.between]: [inicio, fim] },
       [Op.or]: [{ insumoId: { [Op.ne]: null } }, { pecaId: { [Op.ne]: null } }],
     },
     include: [
-      { model: Fornecedor, as: "fornecedor", attributes: ["id", "nome"] },
+      {
+        model: Compra,
+        as: "compra",
+        where: { status: "RECEBIDO", recebidoEm: { [Op.between]: [inicio, fim] } },
+        attributes: ["id", "recebidoEm"],
+        include: [{ model: Fornecedor, as: "fornecedor", attributes: ["id", "nome"] }],
+      },
       { model: Insumo, as: "insumo", attributes: ["id", "nome", "unidade"] },
       {
         model: Peca,
@@ -1291,34 +1296,34 @@ export const gerarRelatorioImpressaoPorLoja = async ({
         attributes: ["id", "nome", "codigo", "unidade"],
       },
     ],
-    order: [["recebidoEm", "DESC"]],
+    order: [[{ model: Compra, as: "compra" }, "recebidoEm", "DESC"]],
   });
 
-  const comprasOperacionaisDetalhadas = comprasOperacionais.map((compra) => {
-    const quantidade = Number(compra.quantidade || 0);
-    const valorUnitario = Number(compra.valorUnitario || 0);
-    const valorTotalInformado = Number(compra.valorTotal || 0);
+  const comprasOperacionaisDetalhadas = itensRecebidos.map((item) => {
+    const quantidade = Number(item.quantidade || 0);
+    const valorUnitario = Number(item.valorUnitario || 0);
+    const valorTotalInformado = Number(item.valorTotal || 0);
     const valorTotal = Number(
       (valorTotalInformado > 0
         ? valorTotalInformado
         : quantidade * valorUnitario
       ).toFixed(2),
     );
-    const tipo = compra.insumoId ? "INSUMO" : "PECA";
-    const itemRelacionado = compra.insumo || compra.peca;
+    const tipo = item.insumoId ? "INSUMO" : "PECA";
+    const itemRelacionado = item.insumo || item.peca;
 
     return {
-      id: compra.id,
+      id: item.id,
       tipo,
-      nomeItem: compra.nomeItem || itemRelacionado?.nome || "Item",
-      itemNome: itemRelacionado?.nome || compra.nomeItem || "Item",
-      codigo: compra.peca?.codigo || null,
+      nomeItem: item.nomeItem || itemRelacionado?.nome || "Item",
+      itemNome: itemRelacionado?.nome || item.nomeItem || "Item",
+      codigo: item.peca?.codigo || null,
       quantidade,
-      unidade: compra.unidade || itemRelacionado?.unidade || "un",
+      unidade: item.unidade || itemRelacionado?.unidade || "un",
       valorUnitario,
       valorTotal,
-      fornecedorNome: compra.fornecedor?.nome || "Sem fornecedor",
-      recebidoEm: compra.recebidoEm,
+      fornecedorNome: item.compra?.fornecedor?.nome || "Sem fornecedor",
+      recebidoEm: item.compra?.recebidoEm,
     };
   });
 

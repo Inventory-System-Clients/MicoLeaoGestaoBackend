@@ -2,6 +2,9 @@ import { Op } from "sequelize";
 import { sequelize } from "../database/connection.js";
 import {
   Compra,
+  CompraItem,
+  CompraCustoAdicional,
+  ContaPagar,
   EstoqueLoja,
   Fornecedor,
   Insumo,
@@ -13,18 +16,34 @@ import {
 import { obterOuCriarEstoqueCentral } from "./movimentacaoEstoqueLojaController.js";
 
 const STATUS_VALIDOS = ["PESQUISANDO", "COMPRADO", "RECEBIDO"];
+const MOEDAS_VALIDAS = ["BRL", "USD"];
+const TIPOS_PAGAMENTO_VALIDOS = ["ANTECIPADO", "PARCELADO", "A_VISTA"];
+const FORMAS_PAGAMENTO_VALIDAS = ["PIX", "DINHEIRO", "BOLETO"];
+
+class ErroValidacaoCompra extends Error {}
+
 const normalizarStatusCompra = (status) =>
   status === "APROVADO" ? "COMPRADO" : status;
 
+const includeItens = {
+  model: CompraItem,
+  as: "itens",
+  include: [
+    { model: Produto, as: "produto", attributes: ["id", "codigo", "nome"] },
+    { model: Insumo, as: "insumo", attributes: ["id", "nome", "unidade"] },
+    { model: Peca, as: "peca", attributes: ["id", "codigo", "nome", "unidade"] },
+    { model: Loja, as: "loja", attributes: ["id", "nome"] },
+  ],
+};
+
 const includeCompra = [
-  { model: Produto, as: "produto", attributes: ["id", "codigo", "nome"] },
-  { model: Insumo, as: "insumo", attributes: ["id", "nome", "unidade"] },
-  { model: Peca, as: "peca", attributes: ["id", "codigo", "nome", "unidade"] },
   { model: Fornecedor, as: "fornecedor", attributes: ["id", "nome"] },
-  { model: Loja, as: "loja", attributes: ["id", "nome"] },
   { model: Usuario, as: "criadoPor", attributes: ["id", "nome"] },
   { model: Usuario, as: "comprador", attributes: ["id", "nome"] },
   { model: Usuario, as: "recebidoPor", attributes: ["id", "nome"] },
+  includeItens,
+  { model: CompraCustoAdicional, as: "custosAdicionais" },
+  { model: ContaPagar, as: "contasPagar", attributes: ["id", "status"] },
 ];
 
 const calcularValorTotal = (quantidade, valorUnitario, valorTotalInformado) => {
@@ -35,6 +54,86 @@ const calcularValorTotal = (quantidade, valorUnitario, valorTotalInformado) => {
     return Number((Number(valorUnitario) * Number(quantidade)).toFixed(2));
   }
   return null;
+};
+
+const comAgregados = (compra) => {
+  const plain = compra.toJSON ? compra.toJSON() : compra;
+  const valorTotalPedido = Number(
+    (plain.itens || [])
+      .reduce((acc, item) => acc + Number(item.valorTotal || 0), 0)
+      .toFixed(2),
+  );
+  const valorCustosAdicionais = Number(
+    (plain.custosAdicionais || [])
+      .reduce((acc, custo) => acc + Number(custo.valor || 0), 0)
+      .toFixed(2),
+  );
+  return { ...plain, valorTotalPedido, valorCustosAdicionais };
+};
+
+const validarItem = async (item, transaction) => {
+  const nomeItem = (item.nomeItem || "").trim();
+  if (!nomeItem) {
+    throw new ErroValidacaoCompra("Informe o nome de cada item do pedido");
+  }
+
+  const produtoId = item.produtoId || null;
+  const insumoId = item.insumoId || null;
+  const pecaId = item.pecaId || null;
+
+  if ([produtoId, insumoId, pecaId].filter(Boolean).length > 1) {
+    throw new ErroValidacaoCompra("Cada item deve ter no máximo um produto, insumo ou peça");
+  }
+
+  const quantidadeNumerica = Number(item.quantidade);
+  if (!Number.isFinite(quantidadeNumerica) || quantidadeNumerica <= 0) {
+    throw new ErroValidacaoCompra(`Informe uma quantidade válida para "${nomeItem}"`);
+  }
+
+  if (produtoId) {
+    const produto = await Produto.findByPk(produtoId, { transaction });
+    if (!produto) throw new ErroValidacaoCompra(`Produto informado não encontrado (${nomeItem})`);
+  }
+  if (insumoId) {
+    const insumo = await Insumo.findByPk(insumoId, { transaction });
+    if (!insumo) throw new ErroValidacaoCompra(`Insumo informado não encontrado (${nomeItem})`);
+  }
+  if (pecaId) {
+    const peca = await Peca.findByPk(pecaId, { transaction });
+    if (!peca) throw new ErroValidacaoCompra(`Peça informada não encontrada (${nomeItem})`);
+  }
+
+  return {
+    tipoItem: item.tipoItem || (produtoId ? "PRODUTO" : insumoId ? "INSUMO" : pecaId ? "PECA" : "PRODUTO"),
+    produtoId,
+    insumoId,
+    pecaId,
+    nomeItem,
+    sku: item.sku || null,
+    quantidade: quantidadeNumerica,
+    unidade: item.unidade || null,
+    valorUnitario: item.valorUnitario || null,
+    valorTotal: calcularValorTotal(quantidadeNumerica, item.valorUnitario, undefined),
+    lojaId: item.lojaId || null,
+    descricaoUso: item.descricaoUso || null,
+  };
+};
+
+const validarCustoAdicional = (custo) => {
+  const descricao = (custo.descricao || "").trim();
+  if (!descricao) return null;
+
+  const valor = Number(custo.valor);
+  if (!Number.isFinite(valor) || valor <= 0) {
+    throw new ErroValidacaoCompra(`Informe um valor válido para o custo adicional "${descricao}"`);
+  }
+
+  const formaPagamento = custo.formaPagamento;
+  if (!FORMAS_PAGAMENTO_VALIDAS.includes(formaPagamento)) {
+    throw new ErroValidacaoCompra(`Forma de pagamento inválida para o custo adicional "${descricao}"`);
+  }
+
+  return { descricao, valor, formaPagamento };
 };
 
 export const listarCompras = async (req, res) => {
@@ -59,15 +158,16 @@ export const listarCompras = async (req, res) => {
     }
 
     if (fornecedorId) where.fornecedorId = fornecedorId;
-    if (lojaId) where.lojaId = lojaId;
+
+    if (lojaId) where["$itens.lojaId$"] = lojaId;
 
     if (produto && produto.trim()) {
       const termo = `%${produto.trim()}%`;
       where[Op.or] = [
-        { nomeItem: { [Op.iLike]: termo } },
-        { "$produto.nome$": { [Op.iLike]: termo } },
-        { "$insumo.nome$": { [Op.iLike]: termo } },
-        { "$peca.nome$": { [Op.iLike]: termo } },
+        { "$itens.nomeItem$": { [Op.iLike]: termo } },
+        { "$itens.produto.nome$": { [Op.iLike]: termo } },
+        { "$itens.insumo.nome$": { [Op.iLike]: termo } },
+        { "$itens.peca.nome$": { [Op.iLike]: termo } },
       ];
     }
 
@@ -81,29 +181,24 @@ export const listarCompras = async (req, res) => {
       }
     }
 
-    const valorMinNumero = Number(valorMin);
-    const valorMaxNumero = Number(valorMax);
-    const temValorMin =
-      valorMin !== undefined && valorMin !== "" && Number.isFinite(valorMinNumero);
-    const temValorMax =
-      valorMax !== undefined && valorMax !== "" && Number.isFinite(valorMaxNumero);
-
-    if (temValorMin || temValorMax) {
-      where.valorTotal = {};
-      if (temValorMin) {
-        where.valorTotal[Op.gte] = valorMinNumero;
-      }
-      if (temValorMax) {
-        where.valorTotal[Op.lte] = valorMaxNumero;
-      }
-    }
-
-    const compras = await Compra.findAll({
+    let compras = await Compra.findAll({
       where,
       include: includeCompra,
       subQuery: false,
+      distinct: true,
       order: [["createdAt", "DESC"]],
     });
+
+    compras = compras.map(comAgregados);
+
+    const valorMinNumero = Number(valorMin);
+    const valorMaxNumero = Number(valorMax);
+    if (valorMin !== undefined && valorMin !== "" && Number.isFinite(valorMinNumero)) {
+      compras = compras.filter((compra) => compra.valorTotalPedido >= valorMinNumero);
+    }
+    if (valorMax !== undefined && valorMax !== "" && Number.isFinite(valorMaxNumero)) {
+      compras = compras.filter((compra) => compra.valorTotalPedido <= valorMaxNumero);
+    }
 
     res.json(compras);
   } catch (error) {
@@ -113,155 +208,204 @@ export const listarCompras = async (req, res) => {
 };
 
 export const criarCompra = async (req, res) => {
+  const transaction = await sequelize.transaction();
+
   try {
     const {
-      nomeItem,
-      produtoId,
-      insumoId,
-      pecaId,
       fornecedorId,
-      lojaId,
-      descricaoUso,
-      quantidade,
-      unidade,
-      valorUnitario,
-      valorTotal,
+      moeda,
+      tipoPagamento,
+      quantidadeParcelas,
+      formaPagamento,
       fotoUrl,
       observacao,
+      itens,
+      custosAdicionais,
     } = req.body;
 
-    if (!nomeItem || !nomeItem.trim()) {
-      return res.status(400).json({ error: "Informe o nome do item" });
+    if (!Array.isArray(itens) || itens.length === 0) {
+      await transaction.rollback();
+      return res.status(400).json({ error: "Adicione ao menos um item ao pedido" });
     }
 
-    if ([produtoId, insumoId, pecaId].filter(Boolean).length > 1) {
-      return res.status(400).json({
-        error: "Selecione ou um produto ou um insumo, não os dois",
-      });
+    const moedaFinal = moeda || "BRL";
+    if (!MOEDAS_VALIDAS.includes(moedaFinal)) {
+      await transaction.rollback();
+      return res.status(400).json({ error: "Moeda inválida" });
     }
 
-    const quantidadeNumerica = Number(quantidade);
-    if (!Number.isFinite(quantidadeNumerica) || quantidadeNumerica <= 0) {
-      return res
-        .status(400)
-        .json({ error: "Informe uma quantidade válida (maior que zero)" });
+    if (tipoPagamento && !TIPOS_PAGAMENTO_VALIDOS.includes(tipoPagamento)) {
+      await transaction.rollback();
+      return res.status(400).json({ error: "Tipo de pagamento inválido" });
     }
 
-    if (produtoId) {
-      const produto = await Produto.findByPk(produtoId);
-      if (!produto) {
-        return res.status(400).json({ error: "Produto informado não encontrado" });
+    if (formaPagamento && !FORMAS_PAGAMENTO_VALIDAS.includes(formaPagamento)) {
+      await transaction.rollback();
+      return res.status(400).json({ error: "Forma de pagamento inválida" });
+    }
+
+    let quantidadeParcelasFinal = null;
+    if (tipoPagamento === "PARCELADO") {
+      quantidadeParcelasFinal = Number(quantidadeParcelas);
+      if (!Number.isInteger(quantidadeParcelasFinal) || quantidadeParcelasFinal < 2) {
+        await transaction.rollback();
+        return res.status(400).json({
+          error: "Informe a quantidade de parcelas (mínimo 2) para pagamento parcelado",
+        });
       }
     }
 
-    if (insumoId) {
-      const insumo = await Insumo.findByPk(insumoId);
-      if (!insumo) {
-        return res.status(400).json({ error: "Insumo informado não encontrado" });
-      }
+    const itensValidados = [];
+    for (const item of itens) {
+      itensValidados.push(await validarItem(item, transaction));
     }
 
-    if (pecaId) {
-      const peca = await Peca.findByPk(pecaId);
-      if (!peca) {
-        return res.status(400).json({ error: "Peca informada nao encontrada" });
-      }
+    const custosValidados = [];
+    for (const custo of custosAdicionais || []) {
+      const custoValidado = validarCustoAdicional(custo);
+      if (custoValidado) custosValidados.push(custoValidado);
     }
 
-    const compra = await Compra.create({
-      nomeItem: nomeItem.trim(),
-      produtoId: produtoId || null,
-      insumoId: insumoId || null,
-      pecaId: pecaId || null,
-      fornecedorId: fornecedorId || null,
-      lojaId: lojaId || null,
-      descricaoUso: descricaoUso || null,
-      quantidade: quantidadeNumerica,
-      unidade: unidade || null,
-      valorUnitario: valorUnitario || null,
-      valorTotal: calcularValorTotal(quantidadeNumerica, valorUnitario, valorTotal),
-      fotoUrl: fotoUrl || null,
-      observacao: observacao || null,
-      criadoPorId: req.usuario.id,
-    });
+    const compra = await Compra.create(
+      {
+        fornecedorId: fornecedorId || null,
+        moeda: moedaFinal,
+        tipoPagamento: tipoPagamento || null,
+        quantidadeParcelas: quantidadeParcelasFinal,
+        formaPagamento: formaPagamento || null,
+        fotoUrl: fotoUrl || null,
+        observacao: observacao || null,
+        criadoPorId: req.usuario.id,
+      },
+      { transaction },
+    );
 
-    const compraCompleta = await Compra.findByPk(compra.id, {
-      include: includeCompra,
-    });
+    await CompraItem.bulkCreate(
+      itensValidados.map((item) => ({ ...item, compraId: compra.id })),
+      { transaction },
+    );
+
+    if (custosValidados.length > 0) {
+      await CompraCustoAdicional.bulkCreate(
+        custosValidados.map((custo) => ({ ...custo, compraId: compra.id })),
+        { transaction },
+      );
+    }
+
+    await transaction.commit();
+
+    const compraCompleta = await Compra.findByPk(compra.id, { include: includeCompra });
 
     res.locals.entityId = compra.id;
-    res.status(201).json(compraCompleta);
+    res.status(201).json(comAgregados(compraCompleta));
   } catch (error) {
+    await transaction.rollback();
+    if (error instanceof ErroValidacaoCompra) {
+      return res.status(400).json({ error: error.message });
+    }
     console.error("Erro ao criar compra:", error);
     res.status(500).json({ error: "Erro ao criar compra" });
   }
 };
 
 export const atualizarCompra = async (req, res) => {
+  const transaction = await sequelize.transaction();
+
   try {
-    const compra = await Compra.findByPk(req.params.id);
+    const compra = await Compra.findByPk(req.params.id, { transaction });
 
     if (!compra) {
+      await transaction.rollback();
       return res.status(404).json({ error: "Compra não encontrada" });
     }
 
     const {
-      nomeItem,
-      produtoId,
-      insumoId,
-      pecaId,
       fornecedorId,
-      lojaId,
-      descricaoUso,
-      quantidade,
-      unidade,
-      valorUnitario,
-      valorTotal,
+      moeda,
+      tipoPagamento,
+      quantidadeParcelas,
+      formaPagamento,
       fotoUrl,
       observacao,
+      itens,
+      custosAdicionais,
     } = req.body;
 
-    if (
-      [
-        produtoId ?? compra.produtoId,
-        insumoId ?? compra.insumoId,
-        pecaId ?? compra.pecaId,
-      ].filter(Boolean).length > 1
-    ) {
+    if (moeda !== undefined && !MOEDAS_VALIDAS.includes(moeda)) {
+      await transaction.rollback();
+      return res.status(400).json({ error: "Moeda inválida" });
+    }
+    if (tipoPagamento !== undefined && tipoPagamento && !TIPOS_PAGAMENTO_VALIDOS.includes(tipoPagamento)) {
+      await transaction.rollback();
+      return res.status(400).json({ error: "Tipo de pagamento inválido" });
+    }
+    if (formaPagamento !== undefined && formaPagamento && !FORMAS_PAGAMENTO_VALIDAS.includes(formaPagamento)) {
+      await transaction.rollback();
+      return res.status(400).json({ error: "Forma de pagamento inválida" });
+    }
+
+    if ((itens !== undefined || custosAdicionais !== undefined) && compra.status !== "PESQUISANDO") {
+      await transaction.rollback();
       return res.status(400).json({
-        error: "Selecione ou um produto ou um insumo, não os dois",
+        error: "Só é possível editar os itens de um pedido enquanto ele está em pesquisa",
       });
     }
 
-    const quantidadeFinal =
-      quantidade !== undefined ? Number(quantidade) : Number(compra.quantidade);
-    const valorUnitarioFinal =
-      valorUnitario !== undefined ? valorUnitario : compra.valorUnitario;
+    await compra.update(
+      {
+        fornecedorId: fornecedorId !== undefined ? fornecedorId || null : compra.fornecedorId,
+        moeda: moeda !== undefined ? moeda : compra.moeda,
+        tipoPagamento: tipoPagamento !== undefined ? tipoPagamento || null : compra.tipoPagamento,
+        quantidadeParcelas:
+          quantidadeParcelas !== undefined ? Number(quantidadeParcelas) || null : compra.quantidadeParcelas,
+        formaPagamento: formaPagamento !== undefined ? formaPagamento || null : compra.formaPagamento,
+        fotoUrl: fotoUrl !== undefined ? fotoUrl || null : compra.fotoUrl,
+        observacao: observacao !== undefined ? observacao || null : compra.observacao,
+      },
+      { transaction },
+    );
 
-    await compra.update({
-      nomeItem: nomeItem !== undefined ? nomeItem.trim() : compra.nomeItem,
-      produtoId: produtoId !== undefined ? produtoId || null : compra.produtoId,
-      insumoId: insumoId !== undefined ? insumoId || null : compra.insumoId,
-      pecaId: pecaId !== undefined ? pecaId || null : compra.pecaId,
-      fornecedorId:
-        fornecedorId !== undefined ? fornecedorId || null : compra.fornecedorId,
-      lojaId: lojaId !== undefined ? lojaId || null : compra.lojaId,
-      descricaoUso:
-        descricaoUso !== undefined ? descricaoUso || null : compra.descricaoUso,
-      quantidade: quantidadeFinal,
-      unidade: unidade !== undefined ? unidade || null : compra.unidade,
-      valorUnitario: valorUnitarioFinal,
-      valorTotal: calcularValorTotal(quantidadeFinal, valorUnitarioFinal, valorTotal),
-      fotoUrl: fotoUrl !== undefined ? fotoUrl || null : compra.fotoUrl,
-      observacao: observacao !== undefined ? observacao || null : compra.observacao,
-    });
+    if (Array.isArray(itens)) {
+      if (itens.length === 0) {
+        await transaction.rollback();
+        return res.status(400).json({ error: "O pedido precisa de ao menos um item" });
+      }
+      const itensValidados = [];
+      for (const item of itens) {
+        itensValidados.push(await validarItem(item, transaction));
+      }
+      await CompraItem.destroy({ where: { compraId: compra.id }, transaction });
+      await CompraItem.bulkCreate(
+        itensValidados.map((item) => ({ ...item, compraId: compra.id })),
+        { transaction },
+      );
+    }
 
-    const compraAtualizada = await Compra.findByPk(compra.id, {
-      include: includeCompra,
-    });
+    if (Array.isArray(custosAdicionais)) {
+      const custosValidados = [];
+      for (const custo of custosAdicionais) {
+        const custoValidado = validarCustoAdicional(custo);
+        if (custoValidado) custosValidados.push(custoValidado);
+      }
+      await CompraCustoAdicional.destroy({ where: { compraId: compra.id }, transaction });
+      if (custosValidados.length > 0) {
+        await CompraCustoAdicional.bulkCreate(
+          custosValidados.map((custo) => ({ ...custo, compraId: compra.id })),
+          { transaction },
+        );
+      }
+    }
 
-    res.json(compraAtualizada);
+    await transaction.commit();
+
+    const compraAtualizada = await Compra.findByPk(compra.id, { include: includeCompra });
+
+    res.json(comAgregados(compraAtualizada));
   } catch (error) {
+    await transaction.rollback();
+    if (error instanceof ErroValidacaoCompra) {
+      return res.status(400).json({ error: error.message });
+    }
     console.error("Erro ao atualizar compra:", error);
     res.status(500).json({ error: "Erro ao atualizar compra" });
   }
@@ -278,7 +422,10 @@ export const atualizarStatusCompra = async (req, res) => {
       return res.status(400).json({ error: "Status inválido" });
     }
 
-    const compra = await Compra.findByPk(req.params.id, { transaction });
+    const compra = await Compra.findByPk(req.params.id, {
+      include: [{ model: CompraItem, as: "itens" }],
+      transaction,
+    });
 
     if (!compra) {
       await transaction.rollback();
@@ -312,55 +459,47 @@ export const atualizarStatusCompra = async (req, res) => {
     }
 
     if (status === "RECEBIDO") {
-      if (compra.produtoId) {
-        // O produto sempre chega primeiro no Depósito Principal, igual uma
-        // compra de fornecedor comum. Se a compra tem uma loja de destino
-        // (campo "onde será usado"), a ida até a loja precisa passar pelo
-        // envio com lacre, não pode creditar o estoque da loja direto aqui.
-        const estoqueCentral = await obterOuCriarEstoqueCentral(transaction);
+      const estoqueCentral = await obterOuCriarEstoqueCentral(transaction);
 
-        const [estoque] = await EstoqueLoja.findOrCreate({
-          where: { lojaId: estoqueCentral.id, produtoId: compra.produtoId },
-          defaults: { quantidade: 0 },
-          transaction,
-        });
+      for (const item of compra.itens) {
+        if (item.produtoId) {
+          const [estoque] = await EstoqueLoja.findOrCreate({
+            where: { lojaId: estoqueCentral.id, produtoId: item.produtoId },
+            defaults: { quantidade: 0 },
+            transaction,
+          });
 
-        await estoque.update(
-          { quantidade: Number(estoque.quantidade || 0) + Number(compra.quantidade) },
-          { transaction },
-        );
-
-        const produto = await Produto.findByPk(compra.produtoId, { transaction });
-        if (produto && compra.valorUnitario !== null && compra.valorUnitario !== undefined) {
-          await produto.update(
-            { custoUnitario: compra.valorUnitario },
+          await estoque.update(
+            { quantidade: Number(estoque.quantidade || 0) + Number(item.quantidade) },
             { transaction },
           );
-        }
-      } else if (compra.insumoId) {
-        const insumo = await Insumo.findByPk(compra.insumoId, { transaction });
-        if (insumo) {
-          await insumo.update(
-            {
-              quantidadeEstoque:
-                Number(insumo.quantidadeEstoque) + Number(compra.quantidade),
-              custoUnitarioUltimo:
-                compra.valorUnitario ?? insumo.custoUnitarioUltimo,
-            },
-            { transaction },
-          );
-        }
-      } else if (compra.pecaId) {
-        const peca = await Peca.findByPk(compra.pecaId, { transaction });
-        if (peca) {
-          await peca.update(
-            {
-              quantidadeEstoque:
-                Number(peca.quantidadeEstoque || 0) + Number(compra.quantidade),
-              custoUnitario: compra.valorUnitario ?? peca.custoUnitario,
-            },
-            { transaction },
-          );
+
+          const produto = await Produto.findByPk(item.produtoId, { transaction });
+          if (produto && item.valorUnitario !== null && item.valorUnitario !== undefined) {
+            await produto.update({ custoUnitario: item.valorUnitario }, { transaction });
+          }
+        } else if (item.insumoId) {
+          const insumo = await Insumo.findByPk(item.insumoId, { transaction });
+          if (insumo) {
+            await insumo.update(
+              {
+                quantidadeEstoque: Number(insumo.quantidadeEstoque) + Number(item.quantidade),
+                custoUnitarioUltimo: item.valorUnitario ?? insumo.custoUnitarioUltimo,
+              },
+              { transaction },
+            );
+          }
+        } else if (item.pecaId) {
+          const peca = await Peca.findByPk(item.pecaId, { transaction });
+          if (peca) {
+            await peca.update(
+              {
+                quantidadeEstoque: Number(peca.quantidadeEstoque || 0) + Number(item.quantidade),
+                custoUnitario: item.valorUnitario ?? peca.custoUnitario,
+              },
+              { transaction },
+            );
+          }
         }
       }
 
@@ -372,11 +511,9 @@ export const atualizarStatusCompra = async (req, res) => {
 
     await transaction.commit();
 
-    const compraAtualizada = await Compra.findByPk(compra.id, {
-      include: includeCompra,
-    });
+    const compraAtualizada = await Compra.findByPk(compra.id, { include: includeCompra });
 
-    res.json(compraAtualizada);
+    res.json(comAgregados(compraAtualizada));
   } catch (error) {
     await transaction.rollback();
     console.error("Erro ao atualizar status da compra:", error);
@@ -398,6 +535,13 @@ export const deletarCompra = async (req, res) => {
       });
     }
 
+    const contasVinculadas = await ContaPagar.count({ where: { compraId: compra.id } });
+    if (contasVinculadas > 0) {
+      return res.status(400).json({
+        error: "Não é possível excluir um pedido que já tem contas a pagar geradas",
+      });
+    }
+
     await compra.destroy();
     res.locals.entityId = req.params.id;
     res.json({ message: "Compra excluída com sucesso" });
@@ -409,45 +553,42 @@ export const deletarCompra = async (req, res) => {
 
 export const historicoPrecos = async (req, res) => {
   try {
-    const { produtoId, insumoId, nomeItem } = req.query;
+    const { produtoId, insumoId, pecaId, nomeItem } = req.query;
 
-    if (!produtoId && !insumoId && !nomeItem) {
+    if (!produtoId && !insumoId && !pecaId && !nomeItem) {
       return res.status(400).json({
-        error: "Informe produtoId, insumoId ou nomeItem para buscar o histórico",
+        error: "Informe produtoId, insumoId, pecaId ou nomeItem para buscar o histórico",
       });
     }
 
-    const where = {
-      status: { [Op.in]: ["COMPRADO", "RECEBIDO"] },
-      valorUnitario: { [Op.ne]: null },
-    };
+    const where = { valorUnitario: { [Op.ne]: null } };
 
     if (produtoId) {
       where.produtoId = produtoId;
     } else if (insumoId) {
       where.insumoId = insumoId;
+    } else if (pecaId) {
+      where.pecaId = pecaId;
     } else {
       where.nomeItem = { [Op.iLike]: `%${nomeItem.trim()}%` };
     }
 
-    const compras = await Compra.findAll({
+    const itens = await CompraItem.findAll({
       where,
       include: [
-        { model: Fornecedor, as: "fornecedor", attributes: ["id", "nome"] },
+        {
+          model: Compra,
+          as: "compra",
+          where: { status: { [Op.in]: ["COMPRADO", "RECEBIDO"] } },
+          attributes: ["id", "status", "dataCompra"],
+          include: [{ model: Fornecedor, as: "fornecedor", attributes: ["id", "nome"] }],
+        },
       ],
-      attributes: [
-        "id",
-        "nomeItem",
-        "valorUnitario",
-        "quantidade",
-        "unidade",
-        "dataCompra",
-        "fornecedorId",
-      ],
-      order: [["dataCompra", "DESC"]],
+      attributes: ["id", "nomeItem", "valorUnitario", "quantidade", "unidade"],
+      order: [[{ model: Compra, as: "compra" }, "dataCompra", "DESC"]],
     });
 
-    res.json(compras);
+    res.json(itens);
   } catch (error) {
     console.error("Erro ao buscar histórico de preços:", error);
     res.status(500).json({ error: "Erro ao buscar histórico de preços" });

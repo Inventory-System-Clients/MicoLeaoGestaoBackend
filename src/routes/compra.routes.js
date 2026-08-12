@@ -7,6 +7,7 @@ import {
   historicoPrecos,
   listarCompras,
 } from "../controllers/compraController.js";
+import { gerarParcelasDeCompra } from "../controllers/contaPagarController.js";
 import { autenticar, autorizarRole, registrarLog } from "../middlewares/auth.js";
 
 const router = express.Router();
@@ -34,6 +35,11 @@ router.delete(
   "/:id",
   registrarLog("EXCLUIR_COMPRA", "Compra"),
   deletarCompra,
+);
+router.post(
+  "/:id/contas-pagar",
+  registrarLog("GERAR_CONTAS_PAGAR", "ContaPagar"),
+  gerarParcelasDeCompra,
 );
 
 export default router;

@@ -9,34 +9,6 @@ const Compra = sequelize.define(
       defaultValue: DataTypes.UUIDV4,
       primaryKey: true,
     },
-    nomeItem: {
-      type: DataTypes.STRING(150),
-      allowNull: false,
-    },
-    produtoId: {
-      type: DataTypes.UUID,
-      allowNull: true,
-      references: {
-        model: "produtos",
-        key: "id",
-      },
-    },
-    insumoId: {
-      type: DataTypes.UUID,
-      allowNull: true,
-      references: {
-        model: "insumos",
-        key: "id",
-      },
-    },
-    pecaId: {
-      type: DataTypes.UUID,
-      allowNull: true,
-      references: {
-        model: "pecas",
-        key: "id",
-      },
-    },
     fornecedorId: {
       type: DataTypes.UUID,
       allowNull: true,
@@ -45,38 +17,24 @@ const Compra = sequelize.define(
         key: "id",
       },
     },
-    lojaId: {
-      type: DataTypes.UUID,
-      allowNull: true,
-      references: {
-        model: "lojas",
-        key: "id",
-      },
-      comment: "Onde será usado (loja), opcional",
-    },
-    descricaoUso: {
-      type: DataTypes.TEXT,
-      allowNull: true,
-      comment: "Onde será usado, texto livre complementar",
-    },
-    quantidade: {
-      type: DataTypes.DECIMAL(10, 2),
+    moeda: {
+      type: DataTypes.STRING(3),
       allowNull: false,
-      validate: {
-        min: 0.01,
-      },
+      defaultValue: "BRL",
     },
-    unidade: {
+    tipoPagamento: {
       type: DataTypes.STRING(20),
       allowNull: true,
+      comment: "ANTECIPADO | PARCELADO | A_VISTA",
     },
-    valorUnitario: {
-      type: DataTypes.DECIMAL(10, 2),
+    quantidadeParcelas: {
+      type: DataTypes.INTEGER,
       allowNull: true,
     },
-    valorTotal: {
-      type: DataTypes.DECIMAL(10, 2),
+    formaPagamento: {
+      type: DataTypes.STRING(20),
       allowNull: true,
+      comment: "PIX | DINHEIRO | BOLETO",
     },
     fotoUrl: {
       type: DataTypes.STRING(700),

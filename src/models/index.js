@@ -44,6 +44,9 @@ import Envio from "./Envio.js";
 import Lacre from "./Lacre.js";
 import ItemLacre from "./ItemLacre.js";
 import Compra from "./Compra.js";
+import CompraItem from "./CompraItem.js";
+import CompraCustoAdicional from "./CompraCustoAdicional.js";
+import ContaPagar from "./ContaPagar.js";
 import TransferenciaMaquina from "./TransferenciaMaquina.js";
 // MovimentaÃ§Ã£o de VeÃ­culo -> VeÃ­culo e UsuÃ¡rio
 MovimentacaoVeiculo.belongsTo(Veiculo, {
@@ -561,14 +564,30 @@ Lacre.hasMany(ItemLacre, { foreignKey: "lacreId", as: "itens" });
 ItemLacre.belongsTo(Lacre, { foreignKey: "lacreId", as: "lacre" });
 ItemLacre.belongsTo(Produto, { foreignKey: "produtoId", as: "produto" });
 
-Compra.belongsTo(Produto, { foreignKey: "produtoId", as: "produto" });
-Compra.belongsTo(Insumo, { foreignKey: "insumoId", as: "insumo" });
-Compra.belongsTo(Peca, { foreignKey: "pecaId", as: "peca" });
 Compra.belongsTo(Fornecedor, { foreignKey: "fornecedorId", as: "fornecedor" });
-Compra.belongsTo(Loja, { foreignKey: "lojaId", as: "loja" });
 Compra.belongsTo(Usuario, { foreignKey: "criadoPorId", as: "criadoPor" });
 Compra.belongsTo(Usuario, { foreignKey: "compradorId", as: "comprador" });
 Compra.belongsTo(Usuario, { foreignKey: "recebidoPorId", as: "recebidoPor" });
+
+Compra.hasMany(CompraItem, { foreignKey: "compraId", as: "itens", onDelete: "CASCADE" });
+CompraItem.belongsTo(Compra, { foreignKey: "compraId", as: "compra" });
+CompraItem.belongsTo(Produto, { foreignKey: "produtoId", as: "produto" });
+CompraItem.belongsTo(Insumo, { foreignKey: "insumoId", as: "insumo" });
+CompraItem.belongsTo(Peca, { foreignKey: "pecaId", as: "peca" });
+CompraItem.belongsTo(Loja, { foreignKey: "lojaId", as: "loja" });
+
+Compra.hasMany(CompraCustoAdicional, {
+  foreignKey: "compraId",
+  as: "custosAdicionais",
+  onDelete: "CASCADE",
+});
+CompraCustoAdicional.belongsTo(Compra, { foreignKey: "compraId", as: "compra" });
+
+Compra.hasMany(ContaPagar, { foreignKey: "compraId", as: "contasPagar" });
+ContaPagar.belongsTo(Compra, { foreignKey: "compraId", as: "compra" });
+ContaPagar.belongsTo(Fornecedor, { foreignKey: "fornecedorId", as: "fornecedor" });
+ContaPagar.belongsTo(Usuario, { foreignKey: "criadoPorId", as: "criadoPor" });
+ContaPagar.belongsTo(Usuario, { foreignKey: "pagoPorId", as: "pagoPor" });
 
 RegistroDinheiro.belongsTo(Loja, { foreignKey: "lojaId", as: "loja" });
 RegistroDinheiro.belongsTo(Maquina, { foreignKey: "maquinaId", as: "maquina" });
@@ -653,6 +672,9 @@ export {
   Lacre,
   ItemLacre,
   Compra,
+  CompraItem,
+  CompraCustoAdicional,
+  ContaPagar,
   TransferenciaMaquina,
 };
 
