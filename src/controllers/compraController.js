@@ -68,7 +68,8 @@ const comAgregados = (compra) => {
       .reduce((acc, custo) => acc + Number(custo.valor || 0), 0)
       .toFixed(2),
   );
-  return { ...plain, valorTotalPedido, valorCustosAdicionais };
+  const valorGeralPedido = Number((valorTotalPedido + valorCustosAdicionais).toFixed(2));
+  return { ...plain, valorTotalPedido, valorCustosAdicionais, valorGeralPedido };
 };
 
 const validarItem = async (item, transaction) => {
@@ -194,10 +195,10 @@ export const listarCompras = async (req, res) => {
     const valorMinNumero = Number(valorMin);
     const valorMaxNumero = Number(valorMax);
     if (valorMin !== undefined && valorMin !== "" && Number.isFinite(valorMinNumero)) {
-      compras = compras.filter((compra) => compra.valorTotalPedido >= valorMinNumero);
+      compras = compras.filter((compra) => compra.valorGeralPedido >= valorMinNumero);
     }
     if (valorMax !== undefined && valorMax !== "" && Number.isFinite(valorMaxNumero)) {
-      compras = compras.filter((compra) => compra.valorTotalPedido <= valorMaxNumero);
+      compras = compras.filter((compra) => compra.valorGeralPedido <= valorMaxNumero);
     }
 
     res.json(compras);
