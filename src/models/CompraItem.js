@@ -81,6 +81,12 @@ const CompraItem = sequelize.define(
       allowNull: true,
       field: "valor_total",
     },
+    quantidadeRecebida: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: true,
+      field: "quantidade_recebida",
+      comment: "Quantidade conferida como efetivamente recebida deste item",
+    },
     lojaId: {
       type: DataTypes.UUID,
       allowNull: true,

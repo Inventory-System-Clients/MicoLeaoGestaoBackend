@@ -65,6 +65,12 @@ const Compra = sequelize.define(
       type: DataTypes.DATE,
       allowNull: true,
     },
+    possuiPendencia: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+      comment: "true quando a conferência de recebimento aponta itens em falta",
+    },
     status: {
       type: DataTypes.ENUM("PESQUISANDO", "COMPRADO", "RECEBIDO"),
       allowNull: false,

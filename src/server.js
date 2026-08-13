@@ -369,6 +369,32 @@ const startServer = async () => {
           });
           console.log("✅ Coluna pecaId adicionada às compras!");
         }
+        if (!colunasCompras.possuiPendencia) {
+          await queryInterface.addColumn("compras", "possuiPendencia", {
+            type: DataTypes.BOOLEAN,
+            allowNull: false,
+            defaultValue: false,
+          });
+          console.log("✅ Coluna possuiPendencia adicionada às compras!");
+        }
+      }
+
+      if (tabelas.includes("compra_itens")) {
+        const colunasCompraItens =
+          await queryInterface.describeTable("compra_itens");
+        if (!colunasCompraItens.quantidade_recebida) {
+          await queryInterface.addColumn(
+            "compra_itens",
+            "quantidade_recebida",
+            {
+              type: DataTypes.DECIMAL(10, 2),
+              allowNull: true,
+            },
+          );
+          console.log(
+            "✅ Coluna quantidade_recebida adicionada aos itens de compra!",
+          );
+        }
       }
     }
 

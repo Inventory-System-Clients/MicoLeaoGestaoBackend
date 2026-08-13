@@ -2,6 +2,7 @@ import express from "express";
 import {
   atualizarCompra,
   atualizarStatusCompra,
+  conferirRecebimentoCompra,
   criarCompra,
   deletarCompra,
   historicoPrecos,
@@ -30,6 +31,11 @@ router.patch(
   "/:id/status",
   registrarLog("ATUALIZAR_STATUS_COMPRA", "Compra"),
   atualizarStatusCompra,
+);
+router.patch(
+  "/:id/conferencia",
+  registrarLog("CONFERIR_RECEBIMENTO_COMPRA", "Compra"),
+  conferirRecebimentoCompra,
 );
 router.delete(
   "/:id",

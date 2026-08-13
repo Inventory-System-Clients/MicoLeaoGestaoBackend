@@ -441,14 +441,17 @@ export const atualizarStatusCompra = async (req, res) => {
     const statusAtual = normalizarStatusCompra(compra.status);
     const transicoesPermitidas = {
       PESQUISANDO: ["COMPRADO"],
-      COMPRADO: ["RECEBIDO"],
+      COMPRADO: [],
       RECEBIDO: [],
     };
 
     if (!transicoesPermitidas[statusAtual]?.includes(status)) {
       await transaction.rollback();
       return res.status(400).json({
-        error: "Nao e possivel voltar etapa ou pular o fluxo da compra",
+        error:
+          status === "RECEBIDO"
+            ? "Para dar como recebido é preciso conferir as quantidades de cada item"
+            : "Nao e possivel voltar etapa ou pular o fluxo da compra",
       });
     }
 
@@ -457,55 +460,6 @@ export const atualizarStatusCompra = async (req, res) => {
     if (status === "COMPRADO") {
       dadosAtualizacao.dataCompra = compra.dataCompra || new Date();
       dadosAtualizacao.compradorId = compra.compradorId || req.usuario.id;
-    }
-
-    if (status === "RECEBIDO") {
-      const estoqueCentral = await obterOuCriarEstoqueCentral(transaction);
-
-      for (const item of compra.itens) {
-        if (item.produtoId) {
-          const [estoque] = await EstoqueLoja.findOrCreate({
-            where: { lojaId: estoqueCentral.id, produtoId: item.produtoId },
-            defaults: { quantidade: 0 },
-            transaction,
-          });
-
-          await estoque.update(
-            { quantidade: Number(estoque.quantidade || 0) + Number(item.quantidade) },
-            { transaction },
-          );
-
-          const produto = await Produto.findByPk(item.produtoId, { transaction });
-          if (produto && item.valorUnitario !== null && item.valorUnitario !== undefined) {
-            await produto.update({ custoUnitario: item.valorUnitario }, { transaction });
-          }
-        } else if (item.insumoId) {
-          const insumo = await Insumo.findByPk(item.insumoId, { transaction });
-          if (insumo) {
-            await insumo.update(
-              {
-                quantidadeEstoque: Number(insumo.quantidadeEstoque) + Number(item.quantidade),
-                custoUnitarioUltimo: item.valorUnitario ?? insumo.custoUnitarioUltimo,
-              },
-              { transaction },
-            );
-          }
-        } else if (item.pecaId) {
-          const peca = await Peca.findByPk(item.pecaId, { transaction });
-          if (peca) {
-            await peca.update(
-              {
-                quantidadeEstoque: Number(peca.quantidadeEstoque || 0) + Number(item.quantidade),
-                custoUnitario: item.valorUnitario ?? peca.custoUnitario,
-              },
-              { transaction },
-            );
-          }
-        }
-      }
-
-      dadosAtualizacao.recebidoPorId = req.usuario.id;
-      dadosAtualizacao.recebidoEm = new Date();
     }
 
     await compra.update(dadosAtualizacao, { transaction });
@@ -519,6 +473,146 @@ export const atualizarStatusCompra = async (req, res) => {
     await transaction.rollback();
     console.error("Erro ao atualizar status da compra:", error);
     res.status(500).json({ error: "Erro ao atualizar status da compra" });
+  }
+};
+
+// Conferência de recebimento: registra quanto chegou de cada item e
+// só marca a compra como pendente quando algo ficou faltando.
+export const conferirRecebimentoCompra = async (req, res) => {
+  const transaction = await sequelize.transaction();
+
+  try {
+    const compra = await Compra.findByPk(req.params.id, {
+      include: [{ model: CompraItem, as: "itens" }],
+      transaction,
+    });
+
+    if (!compra) {
+      await transaction.rollback();
+      return res.status(404).json({ error: "Compra não encontrada" });
+    }
+
+    const statusAtual = normalizarStatusCompra(compra.status);
+    const podeConferir =
+      statusAtual === "COMPRADO" || (statusAtual === "RECEBIDO" && compra.possuiPendencia);
+
+    if (!podeConferir) {
+      await transaction.rollback();
+      return res.status(400).json({
+        error: "Esta compra não está aguardando conferência de recebimento",
+      });
+    }
+
+    const { itens } = req.body;
+    if (!Array.isArray(itens) || itens.length === 0) {
+      await transaction.rollback();
+      return res.status(400).json({ error: "Informe a quantidade recebida de cada item" });
+    }
+
+    const entradasPorId = new Map(itens.map((item) => [item.id, item]));
+
+    for (const item of compra.itens) {
+      if (!entradasPorId.has(item.id)) {
+        await transaction.rollback();
+        return res.status(400).json({
+          error: `Informe a quantidade recebida do item "${item.nomeItem}"`,
+        });
+      }
+    }
+
+    const estoqueCentral = await obterOuCriarEstoqueCentral(transaction);
+    const itensAtualizados = [];
+
+    for (const item of compra.itens) {
+      const entrada = entradasPorId.get(item.id);
+      const quantidadeRecebidaNova = Number(entrada.quantidadeRecebida);
+
+      if (!Number.isFinite(quantidadeRecebidaNova) || quantidadeRecebidaNova < 0) {
+        await transaction.rollback();
+        return res.status(400).json({
+          error: `Informe uma quantidade recebida válida para "${item.nomeItem}"`,
+        });
+      }
+
+      const quantidadeRecebidaAnterior = Number(item.quantidadeRecebida || 0);
+      const delta = Number((quantidadeRecebidaNova - quantidadeRecebidaAnterior).toFixed(2));
+
+      if (delta < 0) {
+        await transaction.rollback();
+        return res.status(400).json({
+          error: `Não é possível reduzir a quantidade já recebida de "${item.nomeItem}"`,
+        });
+      }
+
+      if (delta > 0) {
+        if (item.produtoId) {
+          const [estoque] = await EstoqueLoja.findOrCreate({
+            where: { lojaId: estoqueCentral.id, produtoId: item.produtoId },
+            defaults: { quantidade: 0 },
+            transaction,
+          });
+
+          await estoque.update(
+            { quantidade: Number(estoque.quantidade || 0) + delta },
+            { transaction },
+          );
+
+          const produto = await Produto.findByPk(item.produtoId, { transaction });
+          if (produto && item.valorUnitario !== null && item.valorUnitario !== undefined) {
+            await produto.update({ custoUnitario: item.valorUnitario }, { transaction });
+          }
+        } else if (item.insumoId) {
+          const insumo = await Insumo.findByPk(item.insumoId, { transaction });
+          if (insumo) {
+            await insumo.update(
+              {
+                quantidadeEstoque: Number(insumo.quantidadeEstoque || 0) + delta,
+                custoUnitarioUltimo: item.valorUnitario ?? insumo.custoUnitarioUltimo,
+              },
+              { transaction },
+            );
+          }
+        } else if (item.pecaId) {
+          const peca = await Peca.findByPk(item.pecaId, { transaction });
+          if (peca) {
+            await peca.update(
+              {
+                quantidadeEstoque: Number(peca.quantidadeEstoque || 0) + delta,
+                custoUnitario: item.valorUnitario ?? peca.custoUnitario,
+              },
+              { transaction },
+            );
+          }
+        }
+      }
+
+      await item.update({ quantidadeRecebida: quantidadeRecebidaNova }, { transaction });
+      itensAtualizados.push({ ...item.toJSON(), quantidadeRecebida: quantidadeRecebidaNova });
+    }
+
+    const possuiPendencia = itensAtualizados.some(
+      (item) => Number(item.quantidadeRecebida || 0) < Number(item.quantidade),
+    );
+
+    await compra.update(
+      {
+        status: "RECEBIDO",
+        possuiPendencia,
+        recebidoPorId: compra.recebidoPorId || req.usuario.id,
+        recebidoEm: compra.recebidoEm || new Date(),
+      },
+      { transaction },
+    );
+
+    await transaction.commit();
+
+    const compraAtualizada = await Compra.findByPk(compra.id, { include: includeCompra });
+
+    res.json(comAgregados(compraAtualizada));
+  } catch (error) {
+    await transaction.rollback();
+    console.error("Erro ao conferir recebimento da compra:", error);
+    res.status(500).json({ error: "Erro ao conferir recebimento da compra" });
   }
 };
 
