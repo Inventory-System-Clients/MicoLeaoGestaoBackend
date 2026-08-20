@@ -17,6 +17,24 @@ const Compra = sequelize.define(
         key: "id",
       },
     },
+    numeroPedido: {
+      type: DataTypes.STRING(50),
+      allowNull: true,
+      field: "numero_pedido",
+      comment: "Número/código do pedido, preenchido livremente",
+    },
+    descontoTipo: {
+      type: DataTypes.STRING(10),
+      allowNull: true,
+      field: "desconto_tipo",
+      comment: "PERCENTUAL | FIXO — desconto aplicado só sobre o total dos itens, não sobre os custos adicionais",
+    },
+    descontoValor: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: true,
+      field: "desconto_valor",
+      comment: "Percentual (0-100) ou valor fixo do desconto, conforme descontoTipo",
+    },
     moeda: {
       type: DataTypes.STRING(3),
       allowNull: false,

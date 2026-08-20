@@ -19,6 +19,9 @@ const STATUS_VALIDOS = ["PESQUISANDO", "COMPRADO", "RECEBIDO"];
 const MOEDAS_VALIDAS = ["BRL", "USD"];
 const TIPOS_PAGAMENTO_VALIDOS = ["ANTECIPADO", "PARCELADO", "A_VISTA"];
 const FORMAS_PAGAMENTO_VALIDAS = ["PIX", "DINHEIRO", "BOLETO"];
+const TIPOS_DESCONTO_VALIDOS = ["PERCENTUAL", "FIXO"];
+const TIPOS_VALOR_CUSTO_VALIDOS = ["FIXO", "PERCENTUAL"];
+const BASES_CALCULO_VALIDAS = ["SEM_DESCONTO", "COM_DESCONTO"];
 
 class ErroValidacaoCompra extends Error {}
 
@@ -56,20 +59,64 @@ const calcularValorTotal = (quantidade, valorUnitario, valorTotalInformado) => {
   return null;
 };
 
+const calcularValorDesconto = (valorTotalPedido, descontoTipo, descontoValor) => {
+  if (!descontoTipo || !descontoValor) return 0;
+  const valor =
+    descontoTipo === "PERCENTUAL"
+      ? (valorTotalPedido * Number(descontoValor)) / 100
+      : Number(descontoValor);
+  return Number(Math.min(Math.max(valor, 0), valorTotalPedido).toFixed(2));
+};
+
 const comAgregados = (compra) => {
   const plain = compra.toJSON ? compra.toJSON() : compra;
+  const moedaPedido = plain.moeda || "BRL";
+
   const valorTotalPedido = Number(
     (plain.itens || [])
       .reduce((acc, item) => acc + Number(item.valorTotal || 0), 0)
       .toFixed(2),
   );
-  const valorCustosAdicionais = Number(
-    (plain.custosAdicionais || [])
-      .reduce((acc, custo) => acc + Number(custo.valor || 0), 0)
-      .toFixed(2),
+
+  const valorDesconto = calcularValorDesconto(
+    valorTotalPedido,
+    plain.descontoTipo,
+    plain.descontoValor,
   );
-  const valorGeralPedido = Number((valorTotalPedido + valorCustosAdicionais).toFixed(2));
-  return { ...plain, valorTotalPedido, valorCustosAdicionais, valorGeralPedido };
+  const valorItensComDesconto = Number((valorTotalPedido - valorDesconto).toFixed(2));
+
+  const custosPorMoeda = {};
+  const custosAdicionaisComValor = (plain.custosAdicionais || []).map((custo) => {
+    const moedaCusto = custo.moeda || moedaPedido;
+    let valorCalculado;
+    if (custo.tipoValor === "PERCENTUAL") {
+      const base = custo.baseCalculo === "COM_DESCONTO" ? valorItensComDesconto : valorTotalPedido;
+      valorCalculado = Number(((base * Number(custo.valor || 0)) / 100).toFixed(2));
+    } else {
+      valorCalculado = Number(Number(custo.valor || 0).toFixed(2));
+    }
+    custosPorMoeda[moedaCusto] = Number(
+      ((custosPorMoeda[moedaCusto] || 0) + valorCalculado).toFixed(2),
+    );
+    return { ...custo, valorCalculado };
+  });
+
+  const valorCustosAdicionais = custosPorMoeda[moedaPedido] || 0;
+  const valorGeralPedido = Number((valorItensComDesconto + valorCustosAdicionais).toFixed(2));
+  const custosAdicionaisOutrasMoedas = Object.entries(custosPorMoeda)
+    .filter(([moedaCusto]) => moedaCusto !== moedaPedido)
+    .map(([moedaCusto, valor]) => ({ moeda: moedaCusto, valor }));
+
+  return {
+    ...plain,
+    custosAdicionais: custosAdicionaisComValor,
+    valorTotalPedido,
+    valorDesconto,
+    valorItensComDesconto,
+    valorCustosAdicionais,
+    valorGeralPedido,
+    custosAdicionaisOutrasMoedas,
+  };
 };
 
 const validarItem = async (item, transaction) => {
@@ -161,9 +208,32 @@ const validarCustoAdicional = (custo) => {
   const descricao = (custo.descricao || "").trim();
   if (!descricao) return null;
 
+  const tipoValor = custo.tipoValor || "FIXO";
+  if (!TIPOS_VALOR_CUSTO_VALIDOS.includes(tipoValor)) {
+    throw new ErroValidacaoCompra(`Tipo de valor inválido para o custo adicional "${descricao}"`);
+  }
+
   const valor = Number(custo.valor);
   if (!Number.isFinite(valor) || valor <= 0) {
     throw new ErroValidacaoCompra(`Informe um valor válido para o custo adicional "${descricao}"`);
+  }
+  if (tipoValor === "PERCENTUAL" && valor > 100) {
+    throw new ErroValidacaoCompra(
+      `A porcentagem do custo adicional "${descricao}" não pode passar de 100%`,
+    );
+  }
+
+  const moedaCusto = custo.moeda || "BRL";
+  if (!MOEDAS_VALIDAS.includes(moedaCusto)) {
+    throw new ErroValidacaoCompra(`Moeda inválida para o custo adicional "${descricao}"`);
+  }
+
+  let baseCalculo = null;
+  if (tipoValor === "PERCENTUAL") {
+    baseCalculo = custo.baseCalculo || "SEM_DESCONTO";
+    if (!BASES_CALCULO_VALIDAS.includes(baseCalculo)) {
+      throw new ErroValidacaoCompra(`Base de cálculo inválida para o custo adicional "${descricao}"`);
+    }
   }
 
   const formaPagamento = custo.formaPagamento;
@@ -171,7 +241,25 @@ const validarCustoAdicional = (custo) => {
     throw new ErroValidacaoCompra(`Forma de pagamento inválida para o custo adicional "${descricao}"`);
   }
 
-  return { descricao, valor, formaPagamento };
+  return { descricao, tipoValor, valor, baseCalculo, moeda: moedaCusto, formaPagamento };
+};
+
+const validarDesconto = (descontoTipo, descontoValor) => {
+  if (!descontoTipo) return { descontoTipo: null, descontoValor: null };
+
+  if (!TIPOS_DESCONTO_VALIDOS.includes(descontoTipo)) {
+    throw new ErroValidacaoCompra("Tipo de desconto inválido");
+  }
+
+  const valor = Number(descontoValor);
+  if (!Number.isFinite(valor) || valor <= 0) {
+    throw new ErroValidacaoCompra("Informe um valor válido para o desconto");
+  }
+  if (descontoTipo === "PERCENTUAL" && valor > 100) {
+    throw new ErroValidacaoCompra("O desconto em percentual não pode passar de 100%");
+  }
+
+  return { descontoTipo, descontoValor: valor };
 };
 
 export const listarCompras = async (req, res) => {
@@ -251,6 +339,7 @@ export const criarCompra = async (req, res) => {
   try {
     const {
       fornecedorId,
+      numeroPedido,
       moeda,
       tipoPagamento,
       quantidadeParcelas,
@@ -259,6 +348,8 @@ export const criarCompra = async (req, res) => {
       observacao,
       itens,
       custosAdicionais,
+      descontoTipo,
+      descontoValor,
     } = req.body;
 
     if (!Array.isArray(itens) || itens.length === 0) {
@@ -304,15 +395,20 @@ export const criarCompra = async (req, res) => {
       if (custoValidado) custosValidados.push(custoValidado);
     }
 
+    const descontoValidado = validarDesconto(descontoTipo, descontoValor);
+
     const compra = await Compra.create(
       {
         fornecedorId: fornecedorId || null,
+        numeroPedido: numeroPedido?.trim() || null,
         moeda: moedaFinal,
         tipoPagamento: tipoPagamento || null,
         quantidadeParcelas: quantidadeParcelasFinal,
         formaPagamento: formaPagamento || null,
         fotoUrl: fotoUrl || null,
         observacao: observacao || null,
+        descontoTipo: descontoValidado.descontoTipo,
+        descontoValor: descontoValidado.descontoValor,
         criadoPorId: req.usuario.id,
       },
       { transaction },
@@ -359,6 +455,7 @@ export const atualizarCompra = async (req, res) => {
 
     const {
       fornecedorId,
+      numeroPedido,
       moeda,
       tipoPagamento,
       quantidadeParcelas,
@@ -367,6 +464,8 @@ export const atualizarCompra = async (req, res) => {
       observacao,
       itens,
       custosAdicionais,
+      descontoTipo,
+      descontoValor,
     } = req.body;
 
     if (moeda !== undefined && !MOEDAS_VALIDAS.includes(moeda)) {
@@ -382,16 +481,31 @@ export const atualizarCompra = async (req, res) => {
       return res.status(400).json({ error: "Forma de pagamento inválida" });
     }
 
-    if ((itens !== undefined || custosAdicionais !== undefined) && compra.status !== "PESQUISANDO") {
+    if (
+      (itens !== undefined ||
+        custosAdicionais !== undefined ||
+        descontoTipo !== undefined ||
+        descontoValor !== undefined) &&
+      compra.status !== "PESQUISANDO"
+    ) {
       await transaction.rollback();
       return res.status(400).json({
         error: "Só é possível editar os itens de um pedido enquanto ele está em pesquisa",
       });
     }
 
+    const descontoValidado =
+      descontoTipo !== undefined || descontoValor !== undefined
+        ? validarDesconto(
+            descontoTipo !== undefined ? descontoTipo : compra.descontoTipo,
+            descontoValor !== undefined ? descontoValor : compra.descontoValor,
+          )
+        : null;
+
     await compra.update(
       {
         fornecedorId: fornecedorId !== undefined ? fornecedorId || null : compra.fornecedorId,
+        numeroPedido: numeroPedido !== undefined ? numeroPedido?.trim() || null : compra.numeroPedido,
         moeda: moeda !== undefined ? moeda : compra.moeda,
         tipoPagamento: tipoPagamento !== undefined ? tipoPagamento || null : compra.tipoPagamento,
         quantidadeParcelas:
@@ -399,6 +513,8 @@ export const atualizarCompra = async (req, res) => {
         formaPagamento: formaPagamento !== undefined ? formaPagamento || null : compra.formaPagamento,
         fotoUrl: fotoUrl !== undefined ? fotoUrl || null : compra.fotoUrl,
         observacao: observacao !== undefined ? observacao || null : compra.observacao,
+        descontoTipo: descontoValidado ? descontoValidado.descontoTipo : compra.descontoTipo,
+        descontoValor: descontoValidado ? descontoValidado.descontoValor : compra.descontoValor,
       },
       { transaction },
     );

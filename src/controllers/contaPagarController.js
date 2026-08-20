@@ -8,7 +8,7 @@ const FORMAS_PAGAMENTO_VALIDAS = ["PIX", "DINHEIRO", "BOLETO"];
 
 const includeConta = [
   { model: Fornecedor, as: "fornecedor", attributes: ["id", "nome"] },
-  { model: Compra, as: "compra", attributes: ["id", "moeda"] },
+  { model: Compra, as: "compra", attributes: ["id", "moeda", "numeroPedido"] },
   { model: Usuario, as: "criadoPor", attributes: ["id", "nome"] },
   { model: Usuario, as: "pagoPor", attributes: ["id", "nome"] },
 ];
@@ -163,7 +163,7 @@ export const gerarParcelasDeCompra = async (req, res) => {
         origem: "COMPRA",
         compraId: compra.id,
         fornecedorId: compra.fornecedorId,
-        descricao: `Parcela ${parcela.numeroParcela}/${parcelasValidadas.length}`,
+        descricao: `${compra.numeroPedido ? `Pedido #${compra.numeroPedido} — ` : ""}Parcela ${parcela.numeroParcela}/${parcelasValidadas.length}`,
         numeroParcela: parcela.numeroParcela,
         totalParcelas: parcelasValidadas.length,
         valor: parcela.valor,
