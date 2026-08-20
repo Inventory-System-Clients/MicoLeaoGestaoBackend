@@ -119,6 +119,38 @@ const comAgregados = (compra) => {
   };
 };
 
+// Funcionário de estoque só confere quantidades recebidas — não pode ver preços/valores do pedido.
+const mascararValoresCompra = (compra) => {
+  const {
+    valorTotalPedido,
+    valorDesconto,
+    valorItensComDesconto,
+    valorCustosAdicionais,
+    valorGeralPedido,
+    custosAdicionaisOutrasMoedas,
+    descontoTipo,
+    descontoValor,
+    ...resto
+  } = compra;
+
+  return {
+    ...resto,
+    itens: (compra.itens || []).map(
+      ({ valorUnitario: _valorUnitario, valorTotal: _valorTotal, ...itemResto }) => itemResto,
+    ),
+    custosAdicionais: (compra.custosAdicionais || []).map(
+      ({ valor: _valor, valorCalculado: _valorCalculado, ...custoResto }) => custoResto,
+    ),
+  };
+};
+
+const responderCompra = (req, res, compra, status = 200) => {
+  const agregada = comAgregados(compra);
+  const final =
+    req.usuario?.role === "FUNCIONARIO_ESTOQUE" ? mascararValoresCompra(agregada) : agregada;
+  res.status(status).json(final);
+};
+
 const validarItem = async (item, transaction) => {
   const nomeItem = (item.nomeItem || "").trim();
   if (!nomeItem) {
@@ -326,6 +358,10 @@ export const listarCompras = async (req, res) => {
       compras = compras.filter((compra) => compra.valorGeralPedido <= valorMaxNumero);
     }
 
+    if (req.usuario?.role === "FUNCIONARIO_ESTOQUE") {
+      compras = compras.map(mascararValoresCompra);
+    }
+
     res.json(compras);
   } catch (error) {
     console.error("Erro ao listar compras:", error);
@@ -431,7 +467,7 @@ export const criarCompra = async (req, res) => {
     const compraCompleta = await Compra.findByPk(compra.id, { include: includeCompra });
 
     res.locals.entityId = compra.id;
-    res.status(201).json(comAgregados(compraCompleta));
+    responderCompra(req, res, compraCompleta, 201);
   } catch (error) {
     await transaction.rollback();
     if (error instanceof ErroValidacaoCompra) {
@@ -554,7 +590,7 @@ export const atualizarCompra = async (req, res) => {
 
     const compraAtualizada = await Compra.findByPk(compra.id, { include: includeCompra });
 
-    res.json(comAgregados(compraAtualizada));
+    responderCompra(req, res, compraAtualizada);
   } catch (error) {
     await transaction.rollback();
     if (error instanceof ErroValidacaoCompra) {
@@ -621,7 +657,7 @@ export const atualizarStatusCompra = async (req, res) => {
 
     const compraAtualizada = await Compra.findByPk(compra.id, { include: includeCompra });
 
-    res.json(comAgregados(compraAtualizada));
+    responderCompra(req, res, compraAtualizada);
   } catch (error) {
     await transaction.rollback();
     console.error("Erro ao atualizar status da compra:", error);
@@ -761,7 +797,7 @@ export const conferirRecebimentoCompra = async (req, res) => {
 
     const compraAtualizada = await Compra.findByPk(compra.id, { include: includeCompra });
 
-    res.json(comAgregados(compraAtualizada));
+    responderCompra(req, res, compraAtualizada);
   } catch (error) {
     await transaction.rollback();
     console.error("Erro ao conferir recebimento da compra:", error);
