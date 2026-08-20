@@ -78,9 +78,9 @@ const validarItem = async (item, transaction) => {
     throw new ErroValidacaoCompra("Informe o nome de cada item do pedido");
   }
 
-  const produtoId = item.produtoId || null;
-  const insumoId = item.insumoId || null;
-  const pecaId = item.pecaId || null;
+  let produtoId = item.produtoId || null;
+  let insumoId = item.insumoId || null;
+  let pecaId = item.pecaId || null;
 
   if ([produtoId, insumoId, pecaId].filter(Boolean).length > 1) {
     throw new ErroValidacaoCompra("Cada item deve ter no máximo um produto, insumo ou peça");
@@ -91,21 +91,58 @@ const validarItem = async (item, transaction) => {
     throw new ErroValidacaoCompra(`Informe uma quantidade válida para "${nomeItem}"`);
   }
 
-  if (produtoId) {
-    const produto = await Produto.findByPk(produtoId, { transaction });
-    if (!produto) throw new ErroValidacaoCompra(`Produto informado não encontrado (${nomeItem})`);
-  }
-  if (insumoId) {
-    const insumo = await Insumo.findByPk(insumoId, { transaction });
-    if (!insumo) throw new ErroValidacaoCompra(`Insumo informado não encontrado (${nomeItem})`);
-  }
-  if (pecaId) {
-    const peca = await Peca.findByPk(pecaId, { transaction });
-    if (!peca) throw new ErroValidacaoCompra(`Peça informada não encontrada (${nomeItem})`);
+  const tipoItem =
+    item.tipoItem || (produtoId ? "PRODUTO" : insumoId ? "INSUMO" : pecaId ? "PECA" : "PRODUTO");
+
+  if (item.itemNovo && !produtoId && !insumoId && !pecaId) {
+    if (tipoItem === "INSUMO") {
+      const insumoCriado = await Insumo.create(
+        {
+          nome: nomeItem,
+          unidade: item.unidade || null,
+          custoUnitarioUltimo: item.valorUnitario || null,
+        },
+        { transaction },
+      );
+      insumoId = insumoCriado.id;
+    } else if (tipoItem === "PECA") {
+      const pecaCriada = await Peca.create(
+        {
+          codigo: item.sku || null,
+          nome: nomeItem,
+          custoUnitario: item.valorUnitario || null,
+        },
+        { transaction },
+      );
+      pecaId = pecaCriada.id;
+    } else {
+      const produtoCriado = await Produto.create(
+        {
+          codigo: item.sku || null,
+          nome: nomeItem,
+          custoUnitario: item.valorUnitario || null,
+        },
+        { transaction },
+      );
+      produtoId = produtoCriado.id;
+    }
+  } else {
+    if (produtoId) {
+      const produto = await Produto.findByPk(produtoId, { transaction });
+      if (!produto) throw new ErroValidacaoCompra(`Produto informado não encontrado (${nomeItem})`);
+    }
+    if (insumoId) {
+      const insumo = await Insumo.findByPk(insumoId, { transaction });
+      if (!insumo) throw new ErroValidacaoCompra(`Insumo informado não encontrado (${nomeItem})`);
+    }
+    if (pecaId) {
+      const peca = await Peca.findByPk(pecaId, { transaction });
+      if (!peca) throw new ErroValidacaoCompra(`Peça informada não encontrada (${nomeItem})`);
+    }
   }
 
   return {
-    tipoItem: item.tipoItem || (produtoId ? "PRODUTO" : insumoId ? "INSUMO" : pecaId ? "PECA" : "PRODUTO"),
+    tipoItem,
     produtoId,
     insumoId,
     pecaId,
