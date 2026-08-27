@@ -52,6 +52,12 @@ const Maquina = sequelize.define(
       defaultValue: 100,
       comment: "Quantidade máxima que a máquina comporta",
     },
+    custoAquisicao: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: true,
+      field: "custo_aquisicao",
+      comment: "Quanto custou a máquina, opcional",
+    },
     valorFicha: {
       type: DataTypes.DECIMAL(10, 2),
       allowNull: false,

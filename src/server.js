@@ -449,6 +449,13 @@ const startServer = async () => {
             allowNull: true,
           },
         ],
+        [
+          "custo_aquisicao",
+          {
+            type: DataTypes.DECIMAL(10, 2),
+            allowNull: true,
+          },
+        ],
       ];
 
       for (const [nomeColuna, definicao] of colunasNovasMaquinas) {

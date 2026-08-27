@@ -139,6 +139,7 @@ export const criarMaquina = async (req, res) => {
       statusOperacao,
       motivoParada,
       capacidadePadrao,
+      custoAquisicao,
       valorFicha,
       valorJogada,
       fichasNecessarias,
@@ -216,6 +217,10 @@ export const criarMaquina = async (req, res) => {
         motivoParada,
       }),
       capacidadePadrao: capacidadePadrao || 100,
+      custoAquisicao:
+        custoAquisicao !== undefined && custoAquisicao !== null && custoAquisicao !== ""
+          ? custoAquisicao
+          : null,
       geradoraReceita: geradoraReceitaFinal,
       categoriaGeradora: camposGeradora.categoriaGeradora,
       telemetria: camposGeradora.telemetria,
@@ -258,6 +263,7 @@ export const atualizarMaquina = async (req, res) => {
       statusOperacao,
       motivoParada,
       capacidadePadrao,
+      custoAquisicao,
       valorFicha,
       valorJogada,
       fichasNecessarias,
@@ -344,6 +350,10 @@ export const atualizarMaquina = async (req, res) => {
         motivoParada: motivoParada !== undefined ? motivoParada : maquina.motivoParada,
       }),
       capacidadePadrao: capacidadePadrao ?? maquina.capacidadePadrao,
+      custoAquisicao:
+        custoAquisicao !== undefined
+          ? custoAquisicao === "" ? null : custoAquisicao
+          : maquina.custoAquisicao,
       geradoraReceita: geradoraReceitaFinal,
       categoriaGeradora: camposGeradora.categoriaGeradora,
       telemetria: camposGeradora.telemetria,
