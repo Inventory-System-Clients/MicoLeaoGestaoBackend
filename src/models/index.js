@@ -43,6 +43,7 @@ import ManutencaoPeca from "./ManutencaoPeca.js";
 import ManutencaoPecaQuebrada from "./ManutencaoPecaQuebrada.js";
 import Envio from "./Envio.js";
 import Lacre from "./Lacre.js";
+import Transportador from "./Transportador.js";
 import ItemLacre from "./ItemLacre.js";
 import Compra from "./Compra.js";
 import CompraItem from "./CompraItem.js";
@@ -559,7 +560,7 @@ ManutencaoPecaQuebrada.belongsTo(Usuario, {
 Loja.hasMany(Envio, { foreignKey: "lojaDestinoId", as: "enviosRecebidos" });
 Envio.belongsTo(Loja, { foreignKey: "lojaDestinoId", as: "lojaDestino" });
 Envio.belongsTo(Usuario, { foreignKey: "separadoPorId", as: "separadoPor" });
-Envio.belongsTo(Usuario, {
+Envio.belongsTo(Transportador, {
   foreignKey: "transportadorId",
   as: "transportador",
 });
@@ -684,6 +685,7 @@ export {
   Envio,
   Lacre,
   ItemLacre,
+  Transportador,
   Compra,
   CompraItem,
   CompraCustoAdicional,

@@ -151,9 +151,6 @@ const startServer = async () => {
       ALTER TYPE "enum_usuarios_role" ADD VALUE IF NOT EXISTS 'FUNCIONARIO_ESTOQUE';
     `);
     await sequelize.query(`
-      ALTER TYPE "enum_usuarios_role" ADD VALUE IF NOT EXISTS 'ENTREGADOR';
-    `);
-    await sequelize.query(`
       ALTER TYPE "enum_usuarios_role" ADD VALUE IF NOT EXISTS 'FUNCIONARIO_CADASTRO';
     `);
 
@@ -190,6 +187,121 @@ const startServer = async () => {
         `);
         console.log(
           "✅ Perfil Funcionário de Fábrica removido: usuários migrados para Funcionário de Estoque!",
+        );
+      }
+    }
+
+    {
+      // Transportador deixou de ser um usuário com login: agora é só um
+      // nome cadastrado (tabela `transportadores`, sem autenticação). Solta
+      // a FK antiga de envios.transportadorId -> usuarios (se ainda
+      // apontar pra lá), migra quem hoje tem perfil ENTREGADOR pra um
+      // registro de Transportador (reaproveitando o nome nos envios já
+      // feitos), desativa a conta (não loga mais) e garante a FK nova
+      // apontando pra transportadores. Idempotente.
+      const [fkAntigas] = await sequelize.query(`
+        SELECT tc.constraint_name
+        FROM information_schema.table_constraints tc
+        JOIN information_schema.key_column_usage kcu
+          ON tc.constraint_name = kcu.constraint_name
+          AND tc.table_schema = kcu.table_schema
+        JOIN information_schema.constraint_column_usage ccu
+          ON tc.constraint_name = ccu.constraint_name
+          AND tc.table_schema = ccu.table_schema
+        WHERE tc.table_name = 'envios'
+          AND tc.constraint_type = 'FOREIGN KEY'
+          AND kcu.column_name = 'transportadorId'
+          AND ccu.table_name = 'usuarios'
+      `);
+      for (const fk of fkAntigas) {
+        await sequelize.query(
+          `ALTER TABLE envios DROP CONSTRAINT IF EXISTS "${fk.constraint_name}"`,
+        );
+      }
+
+      const { Usuario, Envio, Transportador } = await import(
+        "./models/index.js"
+      );
+      const entregadores = await Usuario.findAll({
+        where: { role: "ENTREGADOR" },
+      });
+
+      for (const usuarioEntregador of entregadores) {
+        let transportador = await Transportador.findOne({
+          where: { nome: usuarioEntregador.nome },
+        });
+        if (!transportador) {
+          transportador = await Transportador.create({
+            nome: usuarioEntregador.nome,
+          });
+        }
+
+        await Envio.update(
+          { transportadorId: transportador.id },
+          { where: { transportadorId: usuarioEntregador.id } },
+        );
+
+        await usuarioEntregador.update({ ativo: false, role: "FUNCIONARIO" });
+      }
+
+      if (entregadores.length > 0) {
+        console.log(
+          `✅ ${entregadores.length} conta(s) de entregador migradas para transportador (cadastro simples) e desativadas!`,
+        );
+      }
+
+      const [fkNovas] = await sequelize.query(`
+        SELECT tc.constraint_name
+        FROM information_schema.table_constraints tc
+        JOIN information_schema.constraint_column_usage ccu
+          ON tc.constraint_name = ccu.constraint_name
+          AND tc.table_schema = ccu.table_schema
+        WHERE tc.table_name = 'envios'
+          AND tc.constraint_type = 'FOREIGN KEY'
+          AND ccu.table_name = 'transportadores'
+      `);
+      if (fkNovas.length === 0) {
+        await sequelize.query(`
+          ALTER TABLE envios
+          ADD CONSTRAINT envios_transportadorid_transportadores_fkey
+          FOREIGN KEY ("transportadorId") REFERENCES transportadores(id);
+        `);
+      }
+    }
+
+    {
+      // Remove o valor ENTREGADOR do enum de roles — ninguém mais loga
+      // como entregador (virou o cadastro simples de Transportador acima).
+      // Idempotente: só roda se o enum ainda tiver o valor antigo.
+      const [enumRowsEntregador] = await sequelize.query(`
+        SELECT e.enumlabel FROM pg_type t
+        JOIN pg_enum e ON t.oid = e.enumtypid
+        WHERE t.typname = 'enum_usuarios_role'
+        ORDER BY e.enumsortorder
+      `);
+      const roleLabelsEntregador = enumRowsEntregador.map(
+        (linha) => linha.enumlabel,
+      );
+
+      if (roleLabelsEntregador.includes("ENTREGADOR")) {
+        const novosLabelsEntregador = roleLabelsEntregador.filter(
+          (label) => label !== "ENTREGADOR",
+        );
+        const listaEnumSqlEntregador = novosLabelsEntregador
+          .map((label) => `'${label}'`)
+          .join(", ");
+
+        await sequelize.query(`
+          ALTER TABLE usuarios ALTER COLUMN role DROP DEFAULT;
+          ALTER TABLE usuarios ALTER COLUMN role TYPE VARCHAR(30) USING role::text;
+          UPDATE usuarios SET role = 'FUNCIONARIO' WHERE role = 'ENTREGADOR';
+          DROP TYPE IF EXISTS "enum_usuarios_role";
+          CREATE TYPE "enum_usuarios_role" AS ENUM (${listaEnumSqlEntregador});
+          ALTER TABLE usuarios ALTER COLUMN role TYPE "enum_usuarios_role" USING role::"enum_usuarios_role";
+          ALTER TABLE usuarios ALTER COLUMN role SET DEFAULT 'FUNCIONARIO';
+        `);
+        console.log(
+          "✅ Perfil Entregador removido: enum atualizado!",
         );
       }
     }

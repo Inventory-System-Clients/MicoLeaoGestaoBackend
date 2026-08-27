@@ -32,7 +32,6 @@ const Usuario = sequelize.define(
         "FUNCIONARIO",
         "DESENVOLVEDOR",
         "FUNCIONARIO_ESTOQUE",
-        "ENTREGADOR",
         "FUNCIONARIO_CADASTRO",
       ),
       allowNull: false,

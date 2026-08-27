@@ -17,9 +17,8 @@ const router = express.Router();
 
 router.use(autenticar);
 
-// Listagem/leitura: ADMIN e Funcionário de Estoque (precisa escolher
-// transportador ao montar um envio). Criar/editar/excluir/reativar
-// continuam só ADMIN.
+// Listagem/leitura: ADMIN e Funcionário de Estoque. Criar/editar/excluir/
+// reativar continuam só ADMIN.
 router.get("/", autorizarRole("ADMIN", "FUNCIONARIO_ESTOQUE"), listarUsuarios);
 router.get(
   "/:id",

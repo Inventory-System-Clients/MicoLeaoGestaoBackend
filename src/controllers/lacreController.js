@@ -6,6 +6,7 @@ import {
   Lacre,
   Loja,
   Produto,
+  Transportador,
   Usuario,
   UsuarioLoja,
 } from "../models/index.js";
@@ -49,7 +50,7 @@ export const listarLacresPendentes = async (req, res) => {
           where: { lojaDestinoId: lojaId },
           attributes: ["id", "despachadoEm", "observacao"],
           include: [
-            { model: Usuario, as: "transportador", attributes: ["id", "nome"] },
+            { model: Transportador, as: "transportador", attributes: ["id", "nome"] },
           ],
         },
         {
@@ -85,7 +86,7 @@ export const alertasLacresEmTransito = async (req, res) => {
           as: "envio",
           include: [
             { model: Loja, as: "lojaDestino", attributes: ["id", "nome"] },
-            { model: Usuario, as: "transportador", attributes: ["id", "nome"] },
+            { model: Transportador, as: "transportador", attributes: ["id", "nome"] },
           ],
         },
         {

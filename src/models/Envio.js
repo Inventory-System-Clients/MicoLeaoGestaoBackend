@@ -30,10 +30,10 @@ const Envio = sequelize.define(
       type: DataTypes.UUID,
       allowNull: false,
       references: {
-        model: "usuarios",
+        model: "transportadores",
         key: "id",
       },
-      comment: "Funcionário/entregador que está levando o envio",
+      comment: "Transportador (cadastro simples, sem login) que está levando o envio",
     },
     despachadoPorId: {
       type: DataTypes.UUID,

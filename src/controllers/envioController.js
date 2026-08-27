@@ -8,6 +8,7 @@ import {
   Lacre,
   Loja,
   Produto,
+  Transportador,
   Usuario,
 } from "../models/index.js";
 import { obterOuCriarEstoqueCentral } from "./movimentacaoEstoqueLojaController.js";
@@ -21,7 +22,7 @@ const lacreTemNumeroTemporario = (numero) =>
 const includeEnvio = [
   { model: Loja, as: "lojaDestino", attributes: ["id", "nome"] },
   { model: Usuario, as: "separadoPor", attributes: ["id", "nome"] },
-  { model: Usuario, as: "transportador", attributes: ["id", "nome"] },
+  { model: Transportador, as: "transportador", attributes: ["id", "nome"] },
   { model: Usuario, as: "despachadoPor", attributes: ["id", "nome"] },
   {
     model: Lacre,
@@ -47,10 +48,6 @@ export const listarEnvios = async (req, res) => {
   try {
     const { lojaDestinoId, dataInicio, dataFim } = req.query;
     const where = {};
-
-    if (req.usuario.role === "ENTREGADOR") {
-      where.transportadorId = req.usuario.id;
-    }
 
     if (lojaDestinoId) {
       where.lojaDestinoId = lojaDestinoId;
@@ -163,15 +160,14 @@ export const criarEnvio = async (req, res) => {
       return res.status(404).json({ error: "Loja de destino não encontrada" });
     }
 
-    const transportador = await Usuario.findOne({
-      where: { id: transportadorId, ativo: true, role: "ENTREGADOR" },
+    const transportador = await Transportador.findOne({
+      where: { id: transportadorId, ativo: true },
       transaction,
     });
     if (!transportador) {
       await transaction.rollback();
       return res.status(400).json({
-        error:
-          "Transportador informado inválido, inativo ou sem perfil de entregador",
+        error: "Transportador informado inválido ou inativo",
       });
     }
 
@@ -277,16 +273,6 @@ export const despacharEnvio = async (req, res) => {
     if (!envio) {
       await transaction.rollback();
       return res.status(404).json({ error: "Envio não encontrado" });
-    }
-
-    if (
-      req.usuario.role === "ENTREGADOR" &&
-      String(envio.transportadorId) !== String(req.usuario.id)
-    ) {
-      await transaction.rollback();
-      return res
-        .status(403)
-        .json({ error: "Você só pode retirar envios atribuídos a você" });
     }
 
     if (envio.despachadoEm) {

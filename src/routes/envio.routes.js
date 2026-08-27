@@ -10,21 +10,11 @@ const router = express.Router();
 
 router.use(
   autenticar,
-  autorizarRole(
-    "ADMIN",
-    "FUNCIONARIO_ESTOQUE",
-    "ENTREGADOR",
-    "FUNCIONARIO_CADASTRO",
-  ),
+  autorizarRole("ADMIN", "FUNCIONARIO_ESTOQUE", "FUNCIONARIO_CADASTRO"),
 );
 
 router.get("/", listarEnvios);
-router.post(
-  "/",
-  autorizarRole("ADMIN", "FUNCIONARIO_ESTOQUE", "FUNCIONARIO_CADASTRO"),
-  registrarLog("CRIAR_ENVIO", "Envio"),
-  criarEnvio,
-);
+router.post("/", registrarLog("CRIAR_ENVIO", "Envio"), criarEnvio);
 router.patch(
   "/:id/despachar",
   registrarLog("DESPACHAR_ENVIO", "Envio"),
