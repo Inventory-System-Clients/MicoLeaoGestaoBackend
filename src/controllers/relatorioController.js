@@ -84,6 +84,7 @@ import {
   Sangria,
   GastoVariavel,
   TransferenciaMaquina,
+  ExtintorLoja,
 } from "../models/index.js";
 import { calcularGastoFixoProporcionalPeriodo } from "../services/gastoFixoService.js";
 
@@ -917,12 +918,15 @@ const DIAS_ANTECEDENCIA_EXTINTOR = 30;
 // --- ALERTA: EXTINTOR VENCENDO ---
 export const alertasExtintor = async (req, res) => {
   try {
-    const lojas = await Loja.findAll({
-      where: {
-        ativo: true,
-        dataVencimentoExtintor: { [Op.ne]: null },
-      },
-      attributes: ["id", "nome", "dataVencimentoExtintor"],
+    const extintores = await ExtintorLoja.findAll({
+      include: [
+        {
+          model: Loja,
+          as: "loja",
+          where: { ativo: true },
+          attributes: ["id", "nome"],
+        },
+      ],
     });
 
     const hoje = new Date();
@@ -930,23 +934,28 @@ export const alertasExtintor = async (req, res) => {
     const limite = new Date(hoje);
     limite.setDate(limite.getDate() + DIAS_ANTECEDENCIA_EXTINTOR);
 
-    const alertas = lojas
-      .filter((loja) => new Date(loja.dataVencimentoExtintor) <= limite)
-      .map((loja) => {
-        const vencimento = new Date(loja.dataVencimentoExtintor);
+    const alertas = extintores
+      .filter((extintor) => new Date(extintor.dataVencimento) <= limite)
+      .map((extintor) => {
+        const vencimento = new Date(extintor.dataVencimento);
         const diasRestantes = Math.floor(
           (vencimento - hoje) / (1000 * 60 * 60 * 24),
         );
+        const rotulo = extintor.identificacao
+          ? `Extintor (${extintor.identificacao})`
+          : "Extintor";
 
         return {
-          loja: { id: loja.id, nome: loja.nome },
+          id: extintor.id,
+          loja: { id: extintor.loja.id, nome: extintor.loja.nome },
           titulo: "Extintor vencendo",
-          dataVencimentoExtintor: loja.dataVencimentoExtintor,
+          identificacao: extintor.identificacao || null,
+          dataVencimentoExtintor: extintor.dataVencimento,
           diasRestantes,
           mensagem:
             diasRestantes < 0
-              ? `Extintor vencido há ${Math.abs(diasRestantes)} dias`
-              : `Extintor vence em ${diasRestantes} dias`,
+              ? `${rotulo} vencido há ${Math.abs(diasRestantes)} dias`
+              : `${rotulo} vence em ${diasRestantes} dias`,
         };
       })
       .sort((a, b) => a.diasRestantes - b.diasRestantes);

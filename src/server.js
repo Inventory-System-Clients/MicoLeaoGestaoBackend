@@ -510,6 +510,35 @@ const startServer = async () => {
     }
 
     {
+      // Migração de dados: lojas que já tinham um único vencimento de
+      // extintor (coluna antiga data_vencimento_extintor) ganham o
+      // equivalente como primeiro item da nova lista de extintores.
+      // Idempotente: só cria se a loja ainda não tiver nenhum extintor
+      // cadastrado na tabela nova.
+      const { Op } = await import("sequelize");
+      const { Loja, ExtintorLoja } = await import("./models/index.js");
+
+      const lojasComExtintorAntigo = await Loja.findAll({
+        where: { dataVencimentoExtintor: { [Op.ne]: null } },
+        attributes: ["id", "dataVencimentoExtintor"],
+      });
+
+      for (const loja of lojasComExtintorAntigo) {
+        const jaTemExtintor = await ExtintorLoja.count({
+          where: { lojaId: loja.id },
+        });
+
+        if (!jaTemExtintor) {
+          await ExtintorLoja.create({
+            lojaId: loja.id,
+            dataVencimento: loja.dataVencimentoExtintor,
+          });
+          console.log(`✅ Extintor migrado para a lista da loja ${loja.id}`);
+        }
+      }
+    }
+
+    {
       const { DataTypes } = await import("sequelize");
       const tabelas = await queryInterface.showAllTables();
       if (tabelas.includes("GastoFixoLoja")) {

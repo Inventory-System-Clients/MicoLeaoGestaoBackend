@@ -1,4 +1,4 @@
-import { Loja, Maquina, UsuarioLoja } from "../models/index.js";
+import { Loja, Maquina, UsuarioLoja, ExtintorLoja } from "../models/index.js";
 
 const NOMES_DEPOSITO_PRINCIPAL = ["deposito principal", "depósito principal"];
 const ehDepositoPrincipal = (loja) =>
@@ -45,6 +45,11 @@ export const listarLojas = async (req, res) => {
             as: "maquinas",
             attributes: ["id", "codigo", "nome", "tipo", "ativo"],
           },
+          {
+            model: ExtintorLoja,
+            as: "extintores",
+            attributes: ["id", "identificacao", "dataVencimento"],
+          },
         ],
         order: [["nome", "ASC"]],
       });
@@ -60,6 +65,11 @@ export const listarLojas = async (req, res) => {
                 model: Maquina,
                 as: "maquinas",
                 attributes: ["id", "codigo", "nome", "tipo", "ativo"],
+              },
+              {
+                model: ExtintorLoja,
+                as: "extintores",
+                attributes: ["id", "identificacao", "dataVencimento"],
               },
             ],
           },
@@ -84,6 +94,11 @@ export const obterLoja = async (req, res) => {
         {
           model: Maquina,
           as: "maquinas",
+        },
+        {
+          model: ExtintorLoja,
+          as: "extintores",
+          attributes: ["id", "identificacao", "dataVencimento"],
         },
       ],
     });
@@ -112,7 +127,6 @@ export const criarLoja = async (req, res) => {
       statusOperacao,
       dataInicio,
       observacoes,
-      dataVencimentoExtintor,
       dataFimContrato,
       diasAvisoContrato,
       valorFichaPadrao,
@@ -139,7 +153,6 @@ export const criarLoja = async (req, res) => {
       statusOperacao: statusOperacao || "ATIVA",
       dataInicio: dataInicio || null,
       observacoes: observacoes || null,
-      dataVencimentoExtintor: dataVencimentoExtintor || null,
       dataFimContrato: dataFimContrato || null,
       diasAvisoContrato:
         diasAvisoContrato !== undefined && diasAvisoContrato !== null && diasAvisoContrato !== ""
@@ -178,7 +191,6 @@ export const atualizarLoja = async (req, res) => {
       statusOperacao,
       dataInicio,
       observacoes,
-      dataVencimentoExtintor,
       dataFimContrato,
       diasAvisoContrato,
       contratoAvisoAdiadoDias,
@@ -224,8 +236,6 @@ export const atualizarLoja = async (req, res) => {
       statusOperacao: statusOperacao ?? loja.statusOperacao,
       dataInicio: dataInicio ?? loja.dataInicio,
       observacoes: observacoes ?? loja.observacoes,
-      dataVencimentoExtintor:
-        dataVencimentoExtintor ?? loja.dataVencimentoExtintor,
       dataFimContrato: dataFimContrato ?? loja.dataFimContrato,
       diasAvisoContrato: diasAvisoContrato ?? loja.diasAvisoContrato,
       contratoAvisoAdiadoDias: contratoMudou
