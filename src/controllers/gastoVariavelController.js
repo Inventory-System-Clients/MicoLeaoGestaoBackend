@@ -26,10 +26,23 @@ function getCombustivelLabel(valor) {
   }
 }
 
+// Divide um valor em centavos entre N lojas sem perder/sobrar centavo por
+// arredondamento — os primeiros lojas absorvem o resto da divisão.
+const dividirValorEntreLojas = (valorNumerico, quantidade) => {
+  const totalCentavos = Math.round(valorNumerico * 100);
+  const baseCentavos = Math.floor(totalCentavos / quantidade);
+  const resto = totalCentavos - baseCentavos * quantidade;
+  return Array.from(
+    { length: quantidade },
+    (_, indice) => (baseCentavos + (indice < resto ? 1 : 0)) / 100,
+  );
+};
+
 export const criarGastoVariavel = async (req, res) => {
   try {
     const {
       lojaId,
+      lojaIds,
       nome,
       valor,
       observacao,
@@ -42,7 +55,14 @@ export const criarGastoVariavel = async (req, res) => {
     } = req.body;
     const usuarioId = req.usuario?.id;
 
-    if (!lojaId || !nome || !usuarioId) {
+    const lojaIdsFinal =
+      Array.isArray(lojaIds) && lojaIds.length > 0
+        ? [...new Set(lojaIds.filter(Boolean))]
+        : lojaId
+          ? [lojaId]
+          : [];
+
+    if (lojaIdsFinal.length === 0 || !nome || !usuarioId) {
       return res
         .status(400)
         .json({ error: "Campos obrigatórios não preenchidos." });
@@ -54,6 +74,15 @@ export const criarGastoVariavel = async (req, res) => {
         .status(400)
         .json({ error: "Informe um valor válido para o gasto." });
     }
+
+    const rateado = lojaIdsFinal.length > 1;
+    const valoresPorLoja = dividirValorEntreLojas(
+      valorNumerico,
+      lojaIdsFinal.length,
+    );
+    const observacaoFinal = rateado
+      ? `${observacao ? `${observacao} — ` : ""}Rateado entre ${lojaIdsFinal.length} lojas (total R$ ${valorNumerico.toFixed(2)})`
+      : observacao || null;
 
     const agora = new Date();
 
@@ -126,40 +155,42 @@ export const criarGastoVariavel = async (req, res) => {
           { transaction },
         );
 
-        const gasto = await GastoVariavel.create(
-          {
-            lojaId,
+        const gastos = await GastoVariavel.bulkCreate(
+          lojaIdsFinal.map((idLoja, indice) => ({
+            lojaId: idLoja,
             nome,
-            valor: valorNumerico,
-            observacao: observacao || null,
+            valor: valoresPorLoja[indice],
+            observacao: observacaoFinal,
             dataInicio: agora,
             dataFim: agora,
             usuarioId,
             veiculoId,
-          },
+          })),
           { transaction },
         );
 
         await transaction.commit();
-        return res.status(201).json(gasto);
+        return res.status(201).json(rateado ? gastos : gastos[0]);
       } catch (error) {
         await transaction.rollback();
         throw error;
       }
     }
 
-    const gasto = await GastoVariavel.create({
-      lojaId,
-      nome,
-      valor: valorNumerico,
-      observacao: observacao || null,
-      dataInicio: agora,
-      dataFim: agora,
-      usuarioId,
-      veiculoId: null,
-    });
+    const gastos = await GastoVariavel.bulkCreate(
+      lojaIdsFinal.map((idLoja, indice) => ({
+        lojaId: idLoja,
+        nome,
+        valor: valoresPorLoja[indice],
+        observacao: observacaoFinal,
+        dataInicio: agora,
+        dataFim: agora,
+        usuarioId,
+        veiculoId: null,
+      })),
+    );
 
-    res.status(201).json(gasto);
+    res.status(201).json(rateado ? gastos : gastos[0]);
   } catch (error) {
     console.error("Erro ao criar gasto variável:", error);
     res.status(500).json({ error: "Erro ao criar gasto variável." });
