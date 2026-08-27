@@ -1,6 +1,20 @@
 import { sequelize } from "../database/connection.js";
 import { Fornecedor, Insumo, InsumoCompra, Usuario } from "../models/index.js";
 
+// Funcionário de estoque não pode ver custo/preço de insumo, mesma regra
+// já aplicada às compras (compraController.js).
+const mascararValoresInsumo = (insumo) => {
+  const plain = insumo.toJSON ? insumo.toJSON() : insumo;
+  const { custoUnitarioUltimo: _custoUnitarioUltimo, ...resto } = plain;
+  return resto;
+};
+
+const mascararValoresInsumoCompra = (compra) => {
+  const plain = compra.toJSON ? compra.toJSON() : compra;
+  const { custoUnitario: _custoUnitario, custoTotal: _custoTotal, ...resto } = plain;
+  return resto;
+};
+
 export const listarInsumos = async (req, res) => {
   try {
     const { incluirInativos } = req.query;
@@ -15,7 +29,11 @@ export const listarInsumos = async (req, res) => {
       order: [["nome", "ASC"]],
     });
 
-    res.json(insumos);
+    res.json(
+      req.usuario?.role === "FUNCIONARIO_ESTOQUE"
+        ? insumos.map(mascararValoresInsumo)
+        : insumos,
+    );
   } catch (error) {
     console.error("Erro ao listar insumos:", error);
     res.status(500).json({ error: "Erro ao listar insumos" });
@@ -40,7 +58,13 @@ export const criarInsumo = async (req, res) => {
     });
 
     res.locals.entityId = insumo.id;
-    res.status(201).json(insumo);
+    res
+      .status(201)
+      .json(
+        req.usuario?.role === "FUNCIONARIO_ESTOQUE"
+          ? mascararValoresInsumo(insumo)
+          : insumo,
+      );
   } catch (error) {
     console.error("Erro ao criar insumo:", error);
     res.status(500).json({ error: "Erro ao criar insumo" });
@@ -76,7 +100,11 @@ export const atualizarInsumo = async (req, res) => {
     });
 
     res.locals.entityId = insumo.id;
-    res.json(insumo);
+    res.json(
+      req.usuario?.role === "FUNCIONARIO_ESTOQUE"
+        ? mascararValoresInsumo(insumo)
+        : insumo,
+    );
   } catch (error) {
     console.error("Erro ao atualizar insumo:", error);
     res.status(500).json({ error: "Erro ao atualizar insumo" });
@@ -132,7 +160,11 @@ export const listarComprasInsumo = async (req, res) => {
       order: [["dataCompra", "DESC"]],
     });
 
-    res.json(compras);
+    res.json(
+      req.usuario?.role === "FUNCIONARIO_ESTOQUE"
+        ? compras.map(mascararValoresInsumoCompra)
+        : compras,
+    );
   } catch (error) {
     console.error("Erro ao listar compras de insumo:", error);
     res.status(500).json({ error: "Erro ao listar compras de insumo" });
@@ -222,7 +254,13 @@ export const criarCompraInsumo = async (req, res) => {
     });
 
     res.locals.entityId = compra.id;
-    res.status(201).json(compraCompleta);
+    res
+      .status(201)
+      .json(
+        req.usuario?.role === "FUNCIONARIO_ESTOQUE"
+          ? mascararValoresInsumoCompra(compraCompleta)
+          : compraCompleta,
+      );
   } catch (error) {
     await transaction.rollback();
     console.error("Erro ao registrar compra de insumo:", error);
