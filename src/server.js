@@ -222,9 +222,24 @@ const startServer = async () => {
       const { Usuario, Envio, Transportador } = await import(
         "./models/index.js"
       );
-      const entregadores = await Usuario.findAll({
-        where: { role: "ENTREGADOR" },
-      });
+
+      // Depois que o enum perde o valor ENTREGADOR (bloco mais abaixo), o
+      // Postgres rejeita QUALQUER comparação com o literal 'ENTREGADOR' —
+      // não dá pra simplesmente filtrar e não achar nada, a query falha
+      // antes disso. Por isso o find só roda enquanto o valor ainda existe
+      // no tipo do enum.
+      const [enumRowsAntesEntregador] = await sequelize.query(`
+        SELECT e.enumlabel FROM pg_type t
+        JOIN pg_enum e ON t.oid = e.enumtypid
+        WHERE t.typname = 'enum_usuarios_role'
+      `);
+      const enumAindaTemEntregador = enumRowsAntesEntregador.some(
+        (linha) => linha.enumlabel === "ENTREGADOR",
+      );
+
+      const entregadores = enumAindaTemEntregador
+        ? await Usuario.findAll({ where: { role: "ENTREGADOR" } })
+        : [];
 
       for (const usuarioEntregador of entregadores) {
         let transportador = await Transportador.findOne({
