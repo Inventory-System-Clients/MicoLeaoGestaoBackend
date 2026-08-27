@@ -87,10 +87,10 @@ export const requireAdminOuCadastro = (req, res, next) => {
   next();
 };
 
-// Como requireAdminOuCadastro, mas também libera o Funcionário de Fábrica —
-// que só deve mexer em insumos, receitas e pedidos de pelúcia (a parte de
-// fabricação), nunca nas outras áreas de cadastro/operacional.
-export const requireAdminCadastroOuFabrica = (req, res, next) => {
+// Como requireAdminOuCadastro, mas também libera o Funcionário de Estoque —
+// que também mexe em insumos, receitas e pedidos de pelúcia (a parte de
+// fabricação), além do resto do estoque.
+export const requireAdminCadastroOuEstoque = (req, res, next) => {
   if (!req.usuario || !req.usuario.role) {
     return res
       .status(401)
@@ -98,7 +98,7 @@ export const requireAdminCadastroOuFabrica = (req, res, next) => {
   }
   if (
     !isAdminDesenvolvedorOuCadastro(req.usuario.role) &&
-    req.usuario.role !== "FUNCIONARIO_FABRICA"
+    req.usuario.role !== "FUNCIONARIO_ESTOQUE"
   ) {
     return res
       .status(403)

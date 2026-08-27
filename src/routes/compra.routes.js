@@ -15,12 +15,7 @@ const router = express.Router();
 
 router.use(
   autenticar,
-  autorizarRole(
-    "ADMIN",
-    "FUNCIONARIO_ESTOQUE",
-    "FUNCIONARIO_CADASTRO",
-    "FUNCIONARIO_FABRICA",
-  ),
+  autorizarRole("ADMIN", "FUNCIONARIO_ESTOQUE", "FUNCIONARIO_CADASTRO"),
 );
 
 router.get("/", listarCompras);

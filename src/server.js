@@ -156,9 +156,44 @@ const startServer = async () => {
     await sequelize.query(`
       ALTER TYPE "enum_usuarios_role" ADD VALUE IF NOT EXISTS 'FUNCIONARIO_CADASTRO';
     `);
-    await sequelize.query(`
-      ALTER TYPE "enum_usuarios_role" ADD VALUE IF NOT EXISTS 'FUNCIONARIO_FABRICA';
-    `);
+
+    {
+      // Perfil "Funcionário de Fábrica" foi descontinuado: as tarefas de
+      // fábrica (insumos, receitas, pedidos de pelúcia) passaram a ser
+      // feitas pelo Funcionário de Estoque. Migra quem ainda estiver com
+      // o perfil antigo e remove o valor do enum do Postgres. Idempotente:
+      // só roda se o enum ainda tiver o valor antigo.
+      const [enumRows] = await sequelize.query(`
+        SELECT e.enumlabel FROM pg_type t
+        JOIN pg_enum e ON t.oid = e.enumtypid
+        WHERE t.typname = 'enum_usuarios_role'
+        ORDER BY e.enumsortorder
+      `);
+      const roleLabels = enumRows.map((linha) => linha.enumlabel);
+
+      if (roleLabels.includes("FUNCIONARIO_FABRICA")) {
+        const novosLabels = roleLabels.filter(
+          (label) => label !== "FUNCIONARIO_FABRICA",
+        );
+        const listaEnumSql = novosLabels
+          .map((label) => `'${label}'`)
+          .join(", ");
+
+        await sequelize.query(`
+          ALTER TABLE usuarios ALTER COLUMN role DROP DEFAULT;
+          ALTER TABLE usuarios ALTER COLUMN role TYPE VARCHAR(30) USING role::text;
+          UPDATE usuarios SET role = 'FUNCIONARIO_ESTOQUE' WHERE role = 'FUNCIONARIO_FABRICA';
+          DROP TYPE IF EXISTS "enum_usuarios_role";
+          CREATE TYPE "enum_usuarios_role" AS ENUM (${listaEnumSql});
+          ALTER TABLE usuarios ALTER COLUMN role TYPE "enum_usuarios_role" USING role::"enum_usuarios_role";
+          ALTER TABLE usuarios ALTER COLUMN role SET DEFAULT 'FUNCIONARIO';
+        `);
+        console.log(
+          "✅ Perfil Funcionário de Fábrica removido: usuários migrados para Funcionário de Estoque!",
+        );
+      }
+    }
+
     const colunasMaquinas = await queryInterface.describeTable("maquinas");
     const colunasLojas = await queryInterface.describeTable("lojas");
 
