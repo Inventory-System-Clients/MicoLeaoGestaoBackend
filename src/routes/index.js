@@ -39,6 +39,7 @@ import compraRoutes from "./compra.routes.js";
 import contasPagarRoutes from "./contasPagar.routes.js";
 import transportadorRoutes from "./transportador.routes.js";
 import sugestaoCompraRoutes from "./sugestaoCompra.routes.js";
+import tipoMaquinaRoutes from "./tipoMaquina.routes.js";
 import { bloquearSeModoSegurancaAtivo } from "../middlewares/modoSeguranca.js";
 const router = express.Router();
 
@@ -89,5 +90,6 @@ router.use("/compras", compraRoutes);
 router.use("/contas-pagar", contasPagarRoutes);
 router.use("/transportadores", transportadorRoutes);
 router.use("/sugestoes-compra", sugestaoCompraRoutes);
+router.use("/tipos-maquina", tipoMaquinaRoutes);
 
 export default router;

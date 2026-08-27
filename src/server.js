@@ -306,6 +306,44 @@ const startServer = async () => {
       }
     }
 
+    {
+      // Semeia o catálogo de Tipo de Máquina a partir dos valores de
+      // `tipo` já usados nas máquinas cadastradas — assim quem já tinha
+      // "Garra", "Poltrona" etc. digitado à mão continua vendo essas
+      // opções no select novo, sem precisar recadastrar nada. Idempotente:
+      // só cria o que ainda não existe no catálogo.
+      const { Op } = await import("sequelize");
+      const { Maquina, TipoMaquina } = await import("./models/index.js");
+
+      const maquinasComTipo = await Maquina.findAll({
+        attributes: ["tipo", "capacidadePadrao"],
+        where: { tipo: { [Op.ne]: null } },
+        raw: true,
+      });
+
+      const capacidadePorTipo = new Map();
+      for (const maquina of maquinasComTipo) {
+        const nomeTipo = String(maquina.tipo || "").trim();
+        if (!nomeTipo || capacidadePorTipo.has(nomeTipo)) continue;
+        capacidadePorTipo.set(nomeTipo, maquina.capacidadePadrao || 100);
+      }
+
+      let tiposCriados = 0;
+      for (const [nomeTipo, capacidadePadrao] of capacidadePorTipo) {
+        const [, criado] = await TipoMaquina.findOrCreate({
+          where: { nome: nomeTipo },
+          defaults: { capacidadePadrao },
+        });
+        if (criado) tiposCriados++;
+      }
+
+      if (tiposCriados > 0) {
+        console.log(
+          `✅ ${tiposCriados} tipo(s) de máquina migrados pro catálogo novo!`,
+        );
+      }
+    }
+
     const colunasMaquinas = await queryInterface.describeTable("maquinas");
     const colunasLojas = await queryInterface.describeTable("lojas");
 

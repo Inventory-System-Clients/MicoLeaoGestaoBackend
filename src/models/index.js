@@ -52,6 +52,7 @@ import ContaPagar from "./ContaPagar.js";
 import TransferenciaMaquina from "./TransferenciaMaquina.js";
 import SugestaoCompra from "./SugestaoCompra.js";
 import SugestaoCompraItem from "./SugestaoCompraItem.js";
+import TipoMaquina from "./TipoMaquina.js";
 // MovimentaÃ§Ã£o de VeÃ­culo -> VeÃ­culo e UsuÃ¡rio
 MovimentacaoVeiculo.belongsTo(Veiculo, {
   as: "veiculo",
@@ -719,5 +720,6 @@ export {
   TransferenciaMaquina,
   SugestaoCompra,
   SugestaoCompraItem,
+  TipoMaquina,
 };
 
