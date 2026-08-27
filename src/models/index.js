@@ -50,6 +50,8 @@ import CompraItem from "./CompraItem.js";
 import CompraCustoAdicional from "./CompraCustoAdicional.js";
 import ContaPagar from "./ContaPagar.js";
 import TransferenciaMaquina from "./TransferenciaMaquina.js";
+import SugestaoCompra from "./SugestaoCompra.js";
+import SugestaoCompraItem from "./SugestaoCompraItem.js";
 // MovimentaÃ§Ã£o de VeÃ­culo -> VeÃ­culo e UsuÃ¡rio
 MovimentacaoVeiculo.belongsTo(Veiculo, {
   as: "veiculo",
@@ -602,6 +604,30 @@ ContaPagar.belongsTo(Fornecedor, { foreignKey: "fornecedorId", as: "fornecedor" 
 ContaPagar.belongsTo(Usuario, { foreignKey: "criadoPorId", as: "criadoPor" });
 ContaPagar.belongsTo(Usuario, { foreignKey: "pagoPorId", as: "pagoPor" });
 
+SugestaoCompra.hasMany(SugestaoCompraItem, {
+  foreignKey: "sugestaoCompraId",
+  as: "itens",
+  onDelete: "CASCADE",
+});
+SugestaoCompraItem.belongsTo(SugestaoCompra, {
+  foreignKey: "sugestaoCompraId",
+  as: "sugestaoCompra",
+});
+SugestaoCompraItem.belongsTo(Produto, { foreignKey: "produtoId", as: "produto" });
+SugestaoCompraItem.belongsTo(Insumo, { foreignKey: "insumoId", as: "insumo" });
+SugestaoCompraItem.belongsTo(Peca, { foreignKey: "pecaId", as: "peca" });
+SugestaoCompraItem.belongsTo(Loja, { foreignKey: "lojaId", as: "loja" });
+
+SugestaoCompra.belongsTo(Usuario, { foreignKey: "criadoPorId", as: "criadoPor" });
+SugestaoCompra.belongsTo(Usuario, {
+  foreignKey: "respondidoPorId",
+  as: "respondidoPor",
+});
+SugestaoCompra.belongsTo(Compra, {
+  foreignKey: "compraGeradaId",
+  as: "compraGerada",
+});
+
 RegistroDinheiro.belongsTo(Loja, { foreignKey: "lojaId", as: "loja" });
 RegistroDinheiro.belongsTo(Maquina, { foreignKey: "maquinaId", as: "maquina" });
 RegistroDinheiro.belongsTo(Usuario, {
@@ -691,5 +717,7 @@ export {
   CompraCustoAdicional,
   ContaPagar,
   TransferenciaMaquina,
+  SugestaoCompra,
+  SugestaoCompraItem,
 };
 

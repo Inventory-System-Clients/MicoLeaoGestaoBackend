@@ -38,6 +38,7 @@ import lacreRoutes from "./lacre.routes.js";
 import compraRoutes from "./compra.routes.js";
 import contasPagarRoutes from "./contasPagar.routes.js";
 import transportadorRoutes from "./transportador.routes.js";
+import sugestaoCompraRoutes from "./sugestaoCompra.routes.js";
 import { bloquearSeModoSegurancaAtivo } from "../middlewares/modoSeguranca.js";
 const router = express.Router();
 
@@ -87,5 +88,6 @@ router.use("/lacres", lacreRoutes);
 router.use("/compras", compraRoutes);
 router.use("/contas-pagar", contasPagarRoutes);
 router.use("/transportadores", transportadorRoutes);
+router.use("/sugestoes-compra", sugestaoCompraRoutes);
 
 export default router;

@@ -11,6 +11,7 @@ import {
   Loja,
   Peca,
   Produto,
+  SugestaoCompra,
   Usuario,
 } from "../models/index.js";
 import { obterOuCriarEstoqueCentral } from "./movimentacaoEstoqueLojaController.js";
@@ -386,11 +387,31 @@ export const criarCompra = async (req, res) => {
       custosAdicionais,
       descontoTipo,
       descontoValor,
+      sugestaoCompraId,
     } = req.body;
 
     if (!Array.isArray(itens) || itens.length === 0) {
       await transaction.rollback();
       return res.status(400).json({ error: "Adicione ao menos um item ao pedido" });
+    }
+
+    let sugestaoCompra = null;
+    if (sugestaoCompraId) {
+      if (!["ADMIN", "DESENVOLVEDOR"].includes(req.usuario.role)) {
+        await transaction.rollback();
+        return res.status(403).json({
+          error: "Só ADMIN pode aceitar uma sugestão de compra",
+        });
+      }
+      sugestaoCompra = await SugestaoCompra.findByPk(sugestaoCompraId, { transaction });
+      if (!sugestaoCompra) {
+        await transaction.rollback();
+        return res.status(404).json({ error: "Sugestão de compra não encontrada" });
+      }
+      if (sugestaoCompra.status !== "PENDENTE") {
+        await transaction.rollback();
+        return res.status(400).json({ error: "Esta sugestão já foi respondida" });
+      }
     }
 
     const moedaFinal = moeda || "BRL";
@@ -458,6 +479,18 @@ export const criarCompra = async (req, res) => {
     if (custosValidados.length > 0) {
       await CompraCustoAdicional.bulkCreate(
         custosValidados.map((custo) => ({ ...custo, compraId: compra.id })),
+        { transaction },
+      );
+    }
+
+    if (sugestaoCompra) {
+      await sugestaoCompra.update(
+        {
+          status: "ACEITA",
+          respondidoPorId: req.usuario.id,
+          respondidoEm: new Date(),
+          compraGeradaId: compra.id,
+        },
         { transaction },
       );
     }
