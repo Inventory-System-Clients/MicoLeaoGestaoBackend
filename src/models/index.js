@@ -53,6 +53,9 @@ import TransferenciaMaquina from "./TransferenciaMaquina.js";
 import SugestaoCompra from "./SugestaoCompra.js";
 import SugestaoCompraItem from "./SugestaoCompraItem.js";
 import TipoMaquina from "./TipoMaquina.js";
+import ProjetoLoja from "./ProjetoLoja.js";
+import ProjetoLojaMaquina from "./ProjetoLojaMaquina.js";
+import ProjetoLojaCusto from "./ProjetoLojaCusto.js";
 // MovimentaÃ§Ã£o de VeÃ­culo -> VeÃ­culo e UsuÃ¡rio
 MovimentacaoVeiculo.belongsTo(Veiculo, {
   as: "veiculo",
@@ -669,6 +672,28 @@ TransferenciaMaquina.belongsTo(Usuario, {
   as: "usuario",
 });
 
+ProjetoLoja.belongsTo(Loja, { foreignKey: "lojaId", as: "loja" });
+ProjetoLoja.belongsTo(Usuario, { foreignKey: "criadoPorId", as: "criadoPor" });
+ProjetoLoja.hasMany(ProjetoLojaMaquina, {
+  foreignKey: "projetoLojaId",
+  as: "maquinas",
+  onDelete: "CASCADE",
+});
+ProjetoLoja.hasMany(ProjetoLojaCusto, {
+  foreignKey: "projetoLojaId",
+  as: "custos",
+  onDelete: "CASCADE",
+});
+ProjetoLojaMaquina.belongsTo(ProjetoLoja, {
+  foreignKey: "projetoLojaId",
+  as: "projeto",
+});
+ProjetoLojaMaquina.belongsTo(Maquina, { foreignKey: "maquinaId", as: "maquina" });
+ProjetoLojaCusto.belongsTo(ProjetoLoja, {
+  foreignKey: "projetoLojaId",
+  as: "projeto",
+});
+
 export {
   Usuario,
   Loja,
@@ -725,5 +750,8 @@ export {
   SugestaoCompra,
   SugestaoCompraItem,
   TipoMaquina,
+  ProjetoLoja,
+  ProjetoLojaMaquina,
+  ProjetoLojaCusto,
 };
 
