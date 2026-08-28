@@ -643,6 +643,10 @@ RegistroDinheiro.belongsTo(Usuario, {
   foreignKey: "alertaBlinkResolvidoPorId",
   as: "alertaBlinkResolvidoPor",
 });
+RegistroDinheiro.belongsTo(Usuario, {
+  foreignKey: "alertaFichasBlinkResolvidoPorId",
+  as: "alertaFichasBlinkResolvidoPor",
+});
 
 Maquina.hasMany(TransferenciaMaquina, {
   foreignKey: "maquinaId",

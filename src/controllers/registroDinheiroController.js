@@ -6,11 +6,11 @@ import {
   MovimentacaoProduto,
   Movimentacao,
   Maquina,
-  Produto,
   Loja,
   Usuario,
 } from "../models/index.js";
 import { calcularGastoFixoProporcionalPeriodo } from "../services/gastoFixoService.js";
+import { calcularCustoMedioProdutos } from "../services/custoProdutoService.js";
 
 const inicioDoDia = (data) =>
   new Date(data.getFullYear(), data.getMonth(), data.getDate(), 0, 0, 0, 0);
@@ -39,6 +39,12 @@ const normalizarValorMonetario = (valor) => {
   return Number.isFinite(numero) ? numero : 0;
 };
 
+const normalizarInteiro = (valor) => {
+  if (valor === null || valor === undefined || valor === "") return null;
+  const numero = Number(String(valor).replace(/\D/g, ""));
+  return Number.isFinite(numero) ? numero : null;
+};
+
 const calcularGastoVariavelPeriodo = async (lojaId, inicio, fim) => {
   const total = await GastoVariavel.sum("valor", {
     where: {
@@ -53,13 +59,8 @@ const calcularGastoVariavelPeriodo = async (lojaId, inicio, fim) => {
 
 const calcularGastoProdutosSaidaPeriodo = async (lojaId, inicio, fim) => {
   const itensVendidos = await MovimentacaoProduto.findAll({
-    attributes: ["quantidadeSaiu"],
+    attributes: ["produtoId", "quantidadeSaiu"],
     include: [
-      {
-        model: Produto,
-        as: "produto",
-        attributes: ["custoUnitario", "preco"],
-      },
       {
         model: Movimentacao,
         attributes: [],
@@ -82,15 +83,21 @@ const calcularGastoProdutosSaidaPeriodo = async (lojaId, inicio, fim) => {
     nest: true,
   });
 
+  const produtoIds = itensVendidos
+    .filter((item) => Number(item.quantidadeSaiu || 0) > 0)
+    .map((item) => item.produtoId);
+
+  const custoMedioPorProduto = await calcularCustoMedioProdutos(
+    produtoIds,
+    fim,
+  );
+
   const custoTotal = itensVendidos.reduce((acc, item) => {
     const qtd = Number(item.quantidadeSaiu || 0);
     if (qtd <= 0) return acc;
 
-    const custoUnitario = Number(item.produto?.custoUnitario || 0);
-    const precoFallback = Number(item.produto?.preco || 0);
-    const custo = custoUnitario > 0 ? custoUnitario : precoFallback;
-
-    return acc + qtd * custo;
+    const custoMedio = Number(custoMedioPorProduto.get(item.produtoId) || 0);
+    return acc + qtd * custoMedio;
   }, 0);
 
   return Number(custoTotal.toFixed(2));
@@ -150,12 +157,47 @@ const calcularValorEsperadoSistema = async ({
   return Number(total || 0);
 };
 
+// Quantidade de fichas esperada pelo sistema para comparar com a leitura da
+// Blink: soma das fichas coletadas nas máquinas geradoras de receita da loja,
+// exceto as máquinas Cascata (não contabilizam fichas nessa comparação).
+const calcularQuantidadeFichasSistema = async ({ lojaId, inicio, fim }) => {
+  const maquinas = await Maquina.findAll({
+    where: { lojaId, geradoraReceita: true },
+    attributes: ["id", "nome", "tipo"],
+    raw: true,
+  });
+
+  const ehCascata = (maquina) =>
+    String(maquina.tipo || "").trim().toLowerCase().includes("cascata") ||
+    String(maquina.nome || "").trim().toLowerCase().includes("cascata");
+
+  const maquinaIds = maquinas
+    .filter((maquina) => !ehCascata(maquina))
+    .map((maquina) => maquina.id);
+
+  if (maquinaIds.length === 0) return 0;
+
+  const total = await Movimentacao.sum("fichas", {
+    where: {
+      maquinaId: { [Op.in]: maquinaIds },
+      dataColeta: { [Op.between]: [inicio, fim] },
+    },
+  });
+
+  return Number(total || 0);
+};
+
 const includeRegistro = [
   { model: Loja, as: "loja", attributes: ["id", "nome"] },
   { model: Maquina, as: "maquina", attributes: ["id", "codigo", "nome"] },
   { model: Usuario, as: "contadoPor", attributes: ["id", "nome"] },
   { model: Usuario, as: "conferidoPor", attributes: ["id", "nome"] },
   { model: Usuario, as: "alertaBlinkResolvidoPor", attributes: ["id", "nome"] },
+  {
+    model: Usuario,
+    as: "alertaFichasBlinkResolvidoPor",
+    attributes: ["id", "nome"],
+  },
 ];
 
 const registroDinheiroController = {
@@ -170,6 +212,7 @@ const registroDinheiroController = {
         valorDinheiro,
         valorCartaoPix,
         valorBlink,
+        quantidadeFichasBlink,
         percentualTaxaCartaoMedia,
         observacoes,
         conferidoPorId,
@@ -284,6 +327,14 @@ const registroDinheiroController = {
         valorBlink !== undefined && valorBlink !== null && valorBlink !== "";
       const valorBlinkNumero = normalizarValorMonetario(valorBlink);
 
+      const fichasBlinkFornecido =
+        quantidadeFichasBlink !== undefined &&
+        quantidadeFichasBlink !== null &&
+        quantidadeFichasBlink !== "";
+      const quantidadeFichasBlinkNumero = normalizarInteiro(
+        quantidadeFichasBlink,
+      );
+
       const valorEsperadoSistema = await calcularValorEsperadoSistema({
         lojaId: loja,
         maquinaId: ehRegistroTotalLoja ? null : maquina || null,
@@ -291,6 +342,16 @@ const registroDinheiroController = {
         inicio: inicioPeriodo,
         fim: fimPeriodo,
       });
+
+      // Fichas esperadas pelo sistema (máquinas geradoras de receita, exceto
+      // Cascata) só fazem sentido pro fechamento de total da loja.
+      const quantidadeFichasSistema = ehRegistroTotalLoja
+        ? await calcularQuantidadeFichasSistema({
+            lojaId: loja,
+            inicio: inicioPeriodo,
+            fim: fimPeriodo,
+          })
+        : 0;
 
       // Blink é só um valor de comparação (trocadora), não entra na soma
       // contada contra o valor esperado pelo sistema (fichas).
@@ -304,6 +365,15 @@ const registroDinheiroController = {
       const diferencaBlink =
         ehRegistroTotalLoja && blinkFornecido
           ? Number((valorContadoTotal - valorBlinkNumero).toFixed(2))
+          : null;
+
+      // Divergência de fichas do Blink: sistema x leitura manual da Blink,
+      // só pro fechamento de total da loja e só se foi informada.
+      const diferencaFichasBlink =
+        ehRegistroTotalLoja &&
+        fichasBlinkFornecido &&
+        quantidadeFichasBlinkNumero !== null
+          ? quantidadeFichasSistema - quantidadeFichasBlinkNumero
           : null;
 
       const dadosRegistro = {
@@ -321,6 +391,11 @@ const registroDinheiroController = {
         valorEsperadoSistema: Number(valorEsperadoSistema.toFixed(2)),
         diferenca,
         diferencaBlink,
+        quantidadeFichasBlink: quantidadeFichasBlinkNumero,
+        quantidadeFichasSistema: ehRegistroTotalLoja
+          ? quantidadeFichasSistema
+          : null,
+        diferencaFichasBlink,
         contadoPorId: req.usuario.id,
         conferidoPorId: conferidoPorId || null,
         comprovanteUrl: comprovanteUrl || null,
@@ -361,6 +436,9 @@ const registroDinheiroController = {
             "valorEsperadoSistema",
             "diferenca",
             "diferencaBlink",
+            "quantidadeFichasBlink",
+            "quantidadeFichasSistema",
+            "diferencaFichasBlink",
             "contadoPorId",
             "conferidoPorId",
             "comprovanteUrl",
@@ -499,6 +577,55 @@ const registroDinheiroController = {
     }
   },
 
+  async listarAlertasFichasBlink(req, res) {
+    try {
+      const registros = await RegistroDinheiro.findAll({
+        where: {
+          registrarTotalLoja: true,
+          diferencaFichasBlink: { [Op.ne]: null },
+          alertaFichasBlinkResolvidoEm: null,
+        },
+        order: [["fim", "DESC"]],
+        include: includeRegistro,
+      });
+
+      const divergentes = registros.filter(
+        (registro) => Number(registro.diferencaFichasBlink) !== 0,
+      );
+
+      return res.json(divergentes);
+    } catch (err) {
+      return res.status(500).json({
+        error: "Erro ao buscar alertas de divergência de fichas do Blink",
+        details: err.message,
+      });
+    }
+  },
+
+  async resolverAlertaFichasBlink(req, res) {
+    try {
+      const registro = await RegistroDinheiro.findByPk(req.params.id);
+      if (!registro) {
+        return res.status(404).json({ error: "Registro não encontrado" });
+      }
+
+      await registro.update({
+        alertaFichasBlinkResolvidoEm: new Date(),
+        alertaFichasBlinkResolvidoPorId: req.usuario.id,
+      });
+
+      const registroCompleto = await RegistroDinheiro.findByPk(registro.id, {
+        include: includeRegistro,
+      });
+      return res.json(registroCompleto);
+    } catch (err) {
+      return res.status(500).json({
+        error: "Erro ao resolver alerta de divergência de fichas do Blink",
+        details: err.message,
+      });
+    }
+  },
+
   async ultimoFechamento(req, res) {
     try {
       const { lojaId, maquinaId, registrarTotalLoja } = req.query;
@@ -552,16 +679,29 @@ const registroDinheiroController = {
         return res.status(400).json({ error: "Período inválido" });
       }
 
-      const valorEsperadoSistema = await calcularValorEsperadoSistema({
-        lojaId,
-        maquinaId: maquinaId || null,
-        registrarTotalLoja: registrarTotalLoja === "true",
-        inicio: inicioPeriodo,
-        fim: fimPeriodo,
-      });
+      const ehRegistroTotalLoja = registrarTotalLoja === "true";
+
+      const [valorEsperadoSistema, quantidadeFichasSistema] =
+        await Promise.all([
+          calcularValorEsperadoSistema({
+            lojaId,
+            maquinaId: maquinaId || null,
+            registrarTotalLoja: ehRegistroTotalLoja,
+            inicio: inicioPeriodo,
+            fim: fimPeriodo,
+          }),
+          ehRegistroTotalLoja
+            ? calcularQuantidadeFichasSistema({
+                lojaId,
+                inicio: inicioPeriodo,
+                fim: fimPeriodo,
+              })
+            : Promise.resolve(null),
+        ]);
 
       return res.json({
         valorEsperadoSistema: Number(valorEsperadoSistema.toFixed(2)),
+        quantidadeFichasSistema,
       });
     } catch (err) {
       return res.status(500).json({

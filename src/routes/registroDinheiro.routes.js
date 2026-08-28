@@ -38,4 +38,20 @@ router.patch(
   registroDinheiroController.resolverAlertaBlink,
 );
 
+// GET /registro-dinheiro/alertas-fichas-blink — divergências entre a
+// quantidade de fichas coletadas pelo sistema e a lida na Blink. Só ADMIN.
+router.get(
+  "/alertas-fichas-blink",
+  requireAdmin,
+  registroDinheiroController.listarAlertasFichasBlink,
+);
+
+// PATCH /registro-dinheiro/:id/resolver-alerta-fichas-blink — marca a
+// divergência de fichas como revisada. Só ADMIN.
+router.patch(
+  "/:id/resolver-alerta-fichas-blink",
+  requireAdmin,
+  registroDinheiroController.resolverAlertaFichasBlink,
+);
+
 export default router;

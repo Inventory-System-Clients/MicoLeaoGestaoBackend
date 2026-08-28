@@ -111,6 +111,35 @@ const RegistroDinheiro = sequelize.define(
         key: "id",
       },
     },
+    quantidadeFichasBlink: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      comment: "Quantidade de fichas lida no leitor da Blink",
+    },
+    quantidadeFichasSistema: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      comment:
+        "Soma das fichas registradas nas movimentações do período (máquinas geradoras de receita, exceto Cascata)",
+    },
+    diferencaFichasBlink: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      comment:
+        "Fichas do sistema - fichas do Blink, só para registro de total da loja",
+    },
+    alertaFichasBlinkResolvidoEm: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
+    alertaFichasBlinkResolvidoPorId: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      references: {
+        model: "usuarios",
+        key: "id",
+      },
+    },
     contadoPorId: {
       type: DataTypes.UUID,
       allowNull: true,

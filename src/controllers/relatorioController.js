@@ -87,6 +87,7 @@ import {
   ExtintorLoja,
 } from "../models/index.js";
 import { calcularGastoFixoProporcionalPeriodo } from "../services/gastoFixoService.js";
+import { calcularCustoMedioProdutos } from "../services/custoProdutoService.js";
 
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 const VALOR_FICHA_PADRAO_DEFAULT = 2.5;
@@ -234,46 +235,12 @@ export const dashboardRelatorio = async (req, res) => {
     }
 
     // --- QUERY 2: CUSTO DE PRODUTOS (TOTAL E DIÁRIO) ---
+    // Custo por unidade vem da média ponderada das compras recebidas do
+    // produto (calcularCustoMedioProdutos), não mais do custoUnitario
+    // cadastrado no produto.
     const itensVendidos = await MovimentacaoProduto.findAll({
-      attributes: ["quantidadeSaiu"],
+      attributes: ["produtoId", "quantidadeSaiu"],
       include: [
-        {
-          model: Produto,
-          as: "produto",
-          attributes: ["id", "nome", "codigo", "emoji", "custoUnitario"],
-        },
-        {
-          model: Movimentacao,
-          attributes: [],
-          where: whereMovimentacao,
-          include: [
-            {
-              model: Maquina,
-              as: "maquina",
-              where: whereMaquina,
-              attributes: [],
-            },
-          ],
-        },
-      ],
-      raw: true,
-      nest: true,
-    });
-
-    const custoProdutosTotal = itensVendidos.reduce((acc, item) => {
-      const qtd = item.quantidadeSaiu || 0;
-      const custo = parseFloat(item.produto?.custoUnitario || 0);
-      return acc + qtd * custo;
-    }, 0);
-
-    const itensVendidosPorDia = await MovimentacaoProduto.findAll({
-      attributes: ["quantidadeSaiu"],
-      include: [
-        {
-          model: Produto,
-          as: "produto",
-          attributes: ["custoUnitario"],
-        },
         {
           model: Movimentacao,
           attributes: ["dataColeta"],
@@ -292,15 +259,32 @@ export const dashboardRelatorio = async (req, res) => {
       nest: true,
     });
 
+    const produtoIdsVendidos = itensVendidos
+      .filter((item) => Number(item.quantidadeSaiu || 0) > 0)
+      .map((item) => item.produtoId);
+
+    const custoMedioPorProdutoVendido = await calcularCustoMedioProdutos(
+      produtoIdsVendidos,
+      fim,
+    );
+
+    const custoProdutosTotal = itensVendidos.reduce((acc, item) => {
+      const qtd = item.quantidadeSaiu || 0;
+      const custo = Number(custoMedioPorProdutoVendido.get(item.produtoId) || 0);
+      return acc + qtd * custo;
+    }, 0);
+
     const custoProdutosPorDia = new Map();
-    itensVendidosPorDia.forEach((item) => {
+    itensVendidos.forEach((item) => {
       const dataColeta = item.Movimentacao?.dataColeta;
       if (!dataColeta) return;
 
       const chaveData = new Date(dataColeta).toISOString().slice(0, 10);
       const qtd = Number(item.quantidadeSaiu || 0);
-      const custoUnitario = Number(item.produto?.custoUnitario || 0);
-      const custoItem = qtd * custoUnitario;
+      const custoMedio = Number(
+        custoMedioPorProdutoVendido.get(item.produtoId) || 0,
+      );
+      const custoItem = qtd * custoMedio;
 
       custoProdutosPorDia.set(
         chaveData,
@@ -1526,16 +1510,21 @@ export const gerarRelatorioImpressaoPorLoja = async ({
     (a, b) => b.quantidade - a.quantidade,
   );
 
+  // Custo por unidade vem da média ponderada das compras recebidas do
+  // produto (calcularCustoMedioProdutos), não mais do custoUnitario/preco
+  // cadastrado no produto.
+  const custoMedioPorProdutoSairam = await calcularCustoMedioProdutos(
+    Object.keys(produtosSairamMap),
+    fim,
+  );
+
   const maquinasDetalhadas = Object.values(dadosPorMaquina).map((m) => {
     let custoProdutosSairam = 0;
     const produtosSairamDetalhados = Object.values(m.produtosSairam)
       .map((p) => {
-        let custoUnitario = 0;
-        if (p.produto.custoUnitario && Number(p.produto.custoUnitario) > 0) {
-          custoUnitario = Number(p.produto.custoUnitario);
-        } else if (p.produto.preco && Number(p.produto.preco) > 0) {
-          custoUnitario = Number(p.produto.preco);
-        }
+        const custoUnitario = Number(
+          custoMedioPorProdutoSairam.get(p.produto.id) || 0,
+        );
         const custoTotal = custoUnitario * p.quantidade;
         custoProdutosSairam += custoTotal;
         return {
