@@ -13,6 +13,7 @@ import {
   Usuario,
 } from "../models/index.js";
 import { normalizarStatusOperacao } from "./maquinaController.js";
+import { isAdminOuDesenvolvedor } from "../middlewares/auth.js";
 
 const STATUS_ABERTOS = ["ABERTA", "EM_ANDAMENTO", "AGUARDANDO_PECA"];
 const STATUS_VALIDOS = [...STATUS_ABERTOS, "CONCLUIDA"];
@@ -433,6 +434,16 @@ export const criarManutencao = async (req, res) => {
       return res.status(400).json({
         error:
           "Custo inválido. Informe um valor numérico maior ou igual a zero.",
+      });
+    }
+
+    // Só ADMIN pode informar custo na manutenção — é o que gera o gasto
+    // variável automático, e isso fica restrito a quem tem acesso a
+    // financeiro (FUNCIONARIO_CADASTRO cria manutenção, mas não financeiro).
+    if (custoInformado && custoNumerico > 0 && !isAdminOuDesenvolvedor(req.usuario.role)) {
+      await transaction.rollback();
+      return res.status(403).json({
+        error: "Só o administrador pode informar custo na manutenção.",
       });
     }
 

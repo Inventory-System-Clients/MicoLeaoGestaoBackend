@@ -5,13 +5,15 @@ import {
   atualizarGastoVariavel,
   excluirGastoVariavel,
 } from "../controllers/gastoVariavelController.js";
-import { autenticar } from "../middlewares/auth.js";
+import { autenticar, requireAdmin } from "../middlewares/auth.js";
 
 const router = express.Router();
 
-router.post("/", autenticar, criarGastoVariavel);
-router.get("/", autenticar, listarGastosVariaveis);
-router.put("/:id", autenticar, atualizarGastoVariavel);
-router.delete("/:id", autenticar, excluirGastoVariavel);
+router.use(autenticar, requireAdmin);
+
+router.post("/", criarGastoVariavel);
+router.get("/", listarGastosVariaveis);
+router.put("/:id", atualizarGastoVariavel);
+router.delete("/:id", excluirGastoVariavel);
 
 export default router;
