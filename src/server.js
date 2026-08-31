@@ -746,6 +746,23 @@ const startServer = async () => {
     }
 
     {
+      // Novo campo opcional de numeração do extintor. Extintores já
+      // cadastrados ficam com numero = null (continuam funcionando
+      // normalmente, sem precisar recadastrar nada).
+      const colunasExtintorLoja =
+        await queryInterface.describeTable("ExtintorLoja");
+      if (!colunasExtintorLoja.numero) {
+        const { DataTypes } = await import("sequelize");
+        await queryInterface.addColumn("ExtintorLoja", "numero", {
+          type: DataTypes.STRING(50),
+          allowNull: true,
+          comment: "Número/numeração de identificação do extintor. Opcional.",
+        });
+        console.log("✅ Coluna numero adicionada aos extintores!");
+      }
+    }
+
+    {
       const { DataTypes } = await import("sequelize");
       const tabelas = await queryInterface.showAllTables();
       if (tabelas.includes("GastoFixoLoja")) {

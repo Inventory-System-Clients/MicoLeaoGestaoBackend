@@ -41,6 +41,7 @@ export const saveExtintores = async (req, res) => {
         const [linhasAfetadas] = await ExtintorLoja.update(
           {
             identificacao: extintor.identificacao || null,
+            numero: extintor.numero || null,
             dataVencimento: extintor.dataVencimento,
           },
           { where: { id: extintor.id, lojaId }, transaction },
@@ -54,6 +55,7 @@ export const saveExtintores = async (req, res) => {
           {
             lojaId,
             identificacao: extintor.identificacao || null,
+            numero: extintor.numero || null,
             dataVencimento: extintor.dataVencimento,
           },
           { transaction },

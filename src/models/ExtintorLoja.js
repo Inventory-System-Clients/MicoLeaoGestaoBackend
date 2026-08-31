@@ -19,6 +19,11 @@ const ExtintorLoja = sequelize.define(
       allowNull: true,
       comment: "Local/identificação do extintor (ex: corredor, cozinha). Opcional.",
     },
+    numero: {
+      type: DataTypes.STRING(50),
+      allowNull: true,
+      comment: "Número/numeração de identificação do extintor. Opcional.",
+    },
     dataVencimento: {
       type: DataTypes.DATEONLY,
       allowNull: false,
