@@ -105,6 +105,12 @@ export const criarContaAvulsa = async (req, res) => {
 };
 
 export const gerarParcelasDeCompra = async (req, res) => {
+  if (req.usuario?.role === "FUNCIONARIO_ESTOQUE") {
+    return res.status(403).json({
+      error: "Estoque não pode gerar contas a pagar (custo).",
+    });
+  }
+
   const transaction = await sequelize.transaction();
 
   try {

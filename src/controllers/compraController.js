@@ -645,6 +645,13 @@ export const atualizarStatusCompra = async (req, res) => {
       return res.status(400).json({ error: "Status inválido" });
     }
 
+    if (status === "COMPRADO" && req.usuario?.role === "FUNCIONARIO_ESTOQUE") {
+      await transaction.rollback();
+      return res.status(403).json({
+        error: "Estoque não pode dar uma compra como comprada (gera custo).",
+      });
+    }
+
     const compra = await Compra.findByPk(req.params.id, {
       include: [{ model: CompraItem, as: "itens" }],
       transaction,
