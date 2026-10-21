@@ -41,6 +41,7 @@ import transportadorRoutes from "./transportador.routes.js";
 import sugestaoCompraRoutes from "./sugestaoCompra.routes.js";
 import tipoMaquinaRoutes from "./tipoMaquina.routes.js";
 import projetoLojaRoutes from "./projetoLoja.routes.js";
+import cotacaoMoedaRoutes from "./cotacaoMoeda.routes.js";
 import { bloquearSeModoSegurancaAtivo } from "../middlewares/modoSeguranca.js";
 const router = express.Router();
 
@@ -67,6 +68,7 @@ router.use("/alertas-veiculos", alertasVeiculosRoutes);
 router.use("/movimentacao-veiculos", movimentacaoVeiculoRoutes);
 
 router.use("/registro-dinheiro", registroDinheiroRoutes);
+router.use("/cotacoes-moeda", cotacaoMoedaRoutes);
 router.use("/graficos", graficosRoutes);
 router.use("/gastos-variaveis", gastoVariavelRoutes);
 router.use("/graficos", graficosRoutes);

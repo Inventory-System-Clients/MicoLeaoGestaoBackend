@@ -15,6 +15,15 @@ import {
   Usuario,
 } from "../models/index.js";
 import { obterOuCriarEstoqueCentral } from "./movimentacaoEstoqueLojaController.js";
+import {
+  registrarTrocaCustoProduto,
+  removerCustosDaCompra,
+} from "../services/custoProdutoService.js";
+import {
+  buscarHistoricoCotacao,
+  converterParaReal,
+  cotacaoNaData,
+} from "../services/cotacaoService.js";
 
 const STATUS_VALIDOS = ["PESQUISANDO", "COMPRADO", "RECEBIDO"];
 const MOEDAS_VALIDAS = ["BRL", "USD"];
@@ -69,7 +78,10 @@ const calcularValorDesconto = (valorTotalPedido, descontoTipo, descontoValor) =>
   return Number(Math.min(Math.max(valor, 0), valorTotalPedido).toFixed(2));
 };
 
-const comAgregados = (compra) => {
+// historicoCotacao (opcional): pra compra em dólar, devolve `cotacaoDolar` —
+// a cotação do recebimento (ou a de hoje, se ainda não chegou) — e os totais
+// convertidos em real, pra tela mostrar a conversão embaixo do valor.
+const comAgregados = (compra, historicoCotacao) => {
   const plain = compra.toJSON ? compra.toJSON() : compra;
   const moedaPedido = plain.moeda || "BRL";
 
@@ -108,6 +120,11 @@ const comAgregados = (compra) => {
     .filter(([moedaCusto]) => moedaCusto !== moedaPedido)
     .map(([moedaCusto, valor]) => ({ moeda: moedaCusto, valor }));
 
+  const cotacaoDolar =
+    moedaPedido === "USD" && historicoCotacao
+      ? cotacaoNaData(historicoCotacao, plain.recebidoEm || new Date())
+      : null;
+
   return {
     ...plain,
     custosAdicionais: custosAdicionaisComValor,
@@ -117,6 +134,11 @@ const comAgregados = (compra) => {
     valorCustosAdicionais,
     valorGeralPedido,
     custosAdicionaisOutrasMoedas,
+    cotacaoDolar,
+    valorGeralPedidoBrl:
+      cotacaoDolar !== null
+        ? Number((valorGeralPedido * cotacaoDolar).toFixed(2))
+        : null,
   };
 };
 
@@ -129,6 +151,8 @@ const mascararValoresCompra = (compra) => {
     valorCustosAdicionais,
     valorGeralPedido,
     custosAdicionaisOutrasMoedas,
+    cotacaoDolar,
+    valorGeralPedidoBrl,
     descontoTipo,
     descontoValor,
     ...resto
@@ -145,8 +169,10 @@ const mascararValoresCompra = (compra) => {
   };
 };
 
-const responderCompra = (req, res, compra, status = 200) => {
-  const agregada = comAgregados(compra);
+const responderCompra = async (req, res, compra, status = 200) => {
+  const historicoCotacao =
+    compra?.moeda === "USD" ? await buscarHistoricoCotacao("USD") : null;
+  const agregada = comAgregados(compra, historicoCotacao);
   const final =
     req.usuario?.role === "FUNCIONARIO_ESTOQUE" ? mascararValoresCompra(agregada) : agregada;
   res.status(status).json(final);
@@ -348,7 +374,10 @@ export const listarCompras = async (req, res) => {
       order: [["createdAt", "DESC"]],
     });
 
-    compras = compras.map(comAgregados);
+    const historicoCotacao = compras.some((compra) => compra.moeda === "USD")
+      ? await buscarHistoricoCotacao("USD")
+      : null;
+    compras = compras.map((compra) => comAgregados(compra, historicoCotacao));
 
     const valorMinNumero = Number(valorMin);
     const valorMaxNumero = Number(valorMax);
@@ -500,7 +529,7 @@ export const criarCompra = async (req, res) => {
     const compraCompleta = await Compra.findByPk(compra.id, { include: includeCompra });
 
     res.locals.entityId = compra.id;
-    responderCompra(req, res, compraCompleta, 201);
+    await responderCompra(req, res, compraCompleta, 201);
   } catch (error) {
     await transaction.rollback();
     if (error instanceof ErroValidacaoCompra) {
@@ -623,7 +652,7 @@ export const atualizarCompra = async (req, res) => {
 
     const compraAtualizada = await Compra.findByPk(compra.id, { include: includeCompra });
 
-    responderCompra(req, res, compraAtualizada);
+    await responderCompra(req, res, compraAtualizada);
   } catch (error) {
     await transaction.rollback();
     if (error instanceof ErroValidacaoCompra) {
@@ -697,7 +726,7 @@ export const atualizarStatusCompra = async (req, res) => {
 
     const compraAtualizada = await Compra.findByPk(compra.id, { include: includeCompra });
 
-    responderCompra(req, res, compraAtualizada);
+    await responderCompra(req, res, compraAtualizada);
   } catch (error) {
     await transaction.rollback();
     console.error("Erro ao atualizar status da compra:", error);
@@ -715,6 +744,11 @@ export const conferirRecebimentoCompra = async (req, res) => {
       include: [{ model: CompraItem, as: "itens" }],
       transaction,
     });
+
+    const historicoCotacaoRecebimento =
+      compra && (compra.moeda || "BRL") !== "BRL"
+        ? await buscarHistoricoCotacao(compra.moeda, transaction)
+        : [];
 
     if (!compra) {
       await transaction.rollback();
@@ -786,9 +820,32 @@ export const conferirRecebimentoCompra = async (req, res) => {
             { transaction },
           );
 
+          // Compra recebida atualiza o custoUnitario do produto (sempre em
+          // real — compra em dólar é convertida na cotação de agora) e
+          // registra a troca no histórico, ligada a esta compra. Vale a partir
+          // deste recebimento; saídas anteriores mantêm o custo da época.
           const produto = await Produto.findByPk(item.produtoId, { transaction });
-          if (produto && item.valorUnitario !== null && item.valorUnitario !== undefined) {
-            await produto.update({ custoUnitario: item.valorUnitario }, { transaction });
+          if (
+            produto &&
+            item.valorUnitario !== null &&
+            item.valorUnitario !== undefined
+          ) {
+            const custoEmReal = converterParaReal(
+              item.valorUnitario,
+              compra.moeda || "BRL",
+              historicoCotacaoRecebimento,
+              new Date(),
+            );
+            const custoAnterior = produto.custoUnitario;
+            await produto.update({ custoUnitario: custoEmReal }, { transaction });
+            await registrarTrocaCustoProduto({
+              produtoId: produto.id,
+              custoAnterior,
+              custoNovo: custoEmReal,
+              usuarioId: req.usuario?.id,
+              compraId: compra.id,
+              transaction,
+            });
           }
         } else if (item.insumoId) {
           const insumo = await Insumo.findByPk(item.insumoId, { transaction });
@@ -837,11 +894,107 @@ export const conferirRecebimentoCompra = async (req, res) => {
 
     const compraAtualizada = await Compra.findByPk(compra.id, { include: includeCompra });
 
-    responderCompra(req, res, compraAtualizada);
+    await responderCompra(req, res, compraAtualizada);
   } catch (error) {
     await transaction.rollback();
     console.error("Erro ao conferir recebimento da compra:", error);
     res.status(500).json({ error: "Erro ao conferir recebimento da compra" });
+  }
+};
+
+// Desfaz o recebimento de uma compra (só Admin): tira do estoque o que tinha
+// entrado, zera as quantidades recebidas, apaga do histórico os custos que o
+// recebimento gravou (o custoUnitario do produto volta pro custo anterior) e
+// devolve a compra pra "Comprado", pronta pra ser conferida de novo.
+// Bloqueia se parte do que entrou já saiu do estoque (não deixa ficar negativo).
+export const desfazerRecebimentoCompra = async (req, res) => {
+  if (!["ADMIN", "DESENVOLVEDOR"].includes(req.usuario?.role)) {
+    return res
+      .status(403)
+      .json({ error: "Só o Admin pode desfazer o recebimento de uma compra" });
+  }
+
+  const transaction = await sequelize.transaction();
+
+  try {
+    const compra = await Compra.findByPk(req.params.id, {
+      include: [{ model: CompraItem, as: "itens" }],
+      transaction,
+    });
+
+    if (!compra) {
+      await transaction.rollback();
+      return res.status(404).json({ error: "Compra não encontrada" });
+    }
+
+    if (normalizarStatusCompra(compra.status) !== "RECEBIDO") {
+      await transaction.rollback();
+      return res
+        .status(400)
+        .json({ error: "Só é possível desfazer o recebimento de uma compra recebida" });
+    }
+
+    const estoqueCentral = await obterOuCriarEstoqueCentral(transaction);
+
+    for (const item of compra.itens) {
+      const quantidadeRecebida = Number(item.quantidadeRecebida || 0);
+      if (quantidadeRecebida <= 0) continue;
+
+      let registroEstoque = null;
+      if (item.produtoId) {
+        registroEstoque = await EstoqueLoja.findOne({
+          where: { lojaId: estoqueCentral.id, produtoId: item.produtoId },
+          transaction,
+        });
+      } else if (item.insumoId) {
+        registroEstoque = await Insumo.findByPk(item.insumoId, { transaction });
+      } else if (item.pecaId) {
+        registroEstoque = await Peca.findByPk(item.pecaId, { transaction });
+      }
+      if (!registroEstoque) continue;
+
+      const campoQuantidade = item.produtoId ? "quantidade" : "quantidadeEstoque";
+      const quantidadeEmEstoque = Number(registroEstoque[campoQuantidade] || 0);
+
+      if (quantidadeEmEstoque < quantidadeRecebida) {
+        await transaction.rollback();
+        return res.status(400).json({
+          error: `Não dá pra desfazer: "${item.nomeItem}" recebeu ${quantidadeRecebida}, mas só ${quantidadeEmEstoque} continua no estoque (o resto já saiu). Ajuste o estoque antes.`,
+        });
+      }
+
+      await registroEstoque.update(
+        {
+          [campoQuantidade]: Number(
+            (quantidadeEmEstoque - quantidadeRecebida).toFixed(2),
+          ),
+        },
+        { transaction },
+      );
+      await item.update({ quantidadeRecebida: null }, { transaction });
+    }
+
+    await removerCustosDaCompra(compra.id, transaction);
+
+    await compra.update(
+      {
+        status: "COMPRADO",
+        possuiPendencia: false,
+        recebidoPorId: null,
+        recebidoEm: null,
+      },
+      { transaction },
+    );
+
+    await transaction.commit();
+
+    const compraAtualizada = await Compra.findByPk(compra.id, { include: includeCompra });
+
+    await responderCompra(req, res, compraAtualizada);
+  } catch (error) {
+    await transaction.rollback();
+    console.error("Erro ao desfazer recebimento da compra:", error);
+    res.status(500).json({ error: "Erro ao desfazer recebimento da compra" });
   }
 };
 

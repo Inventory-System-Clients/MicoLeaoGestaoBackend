@@ -10,7 +10,11 @@ import {
   Usuario,
 } from "../models/index.js";
 import { calcularGastoFixoProporcionalPeriodo } from "../services/gastoFixoService.js";
-import { calcularCustoMedioProdutos } from "../services/custoProdutoService.js";
+import {
+  calcularCustoMedioProdutos,
+  buscarHistoricoCustoProduto,
+  custoUnitarioNaData,
+} from "../services/custoProdutoService.js";
 
 const inicioDoDia = (data) =>
   new Date(data.getFullYear(), data.getMonth(), data.getDate(), 0, 0, 0, 0);
@@ -63,7 +67,7 @@ const calcularGastoProdutosSaidaPeriodo = async (lojaId, inicio, fim) => {
     include: [
       {
         model: Movimentacao,
-        attributes: [],
+        attributes: ["dataColeta"],
         required: true,
         where: {
           dataColeta: { [Op.between]: [inicio, fim] },
@@ -87,17 +91,22 @@ const calcularGastoProdutosSaidaPeriodo = async (lojaId, inicio, fim) => {
     .filter((item) => Number(item.quantidadeSaiu || 0) > 0)
     .map((item) => item.produtoId);
 
-  const custoMedioPorProduto = await calcularCustoMedioProdutos(
-    produtoIds,
-    fim,
-  );
+  const [custoMedioPorProduto, historicoCusto] = await Promise.all([
+    calcularCustoMedioProdutos(produtoIds, fim),
+    buscarHistoricoCustoProduto(produtoIds),
+  ]);
 
   const custoTotal = itensVendidos.reduce((acc, item) => {
     const qtd = Number(item.quantidadeSaiu || 0);
     if (qtd <= 0) return acc;
 
-    const custoMedio = Number(custoMedioPorProduto.get(item.produtoId) || 0);
-    return acc + qtd * custoMedio;
+    const custo = custoUnitarioNaData(
+      historicoCusto,
+      custoMedioPorProduto,
+      item.produtoId,
+      item.Movimentacao?.dataColeta || fim,
+    );
+    return acc + qtd * custo;
   }, 0);
 
   return Number(custoTotal.toFixed(2));

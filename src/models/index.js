@@ -56,6 +56,8 @@ import TipoMaquina from "./TipoMaquina.js";
 import ProjetoLoja from "./ProjetoLoja.js";
 import ProjetoLojaMaquina from "./ProjetoLojaMaquina.js";
 import ProjetoLojaCusto from "./ProjetoLojaCusto.js";
+import ProdutoCustoHistorico from "./ProdutoCustoHistorico.js";
+import CotacaoMoeda from "./CotacaoMoeda.js";
 // MovimentaÃ§Ã£o de VeÃ­culo -> VeÃ­culo e UsuÃ¡rio
 MovimentacaoVeiculo.belongsTo(Veiculo, {
   as: "veiculo",
@@ -492,6 +494,15 @@ Produto.hasMany(PedidoPelucia, {
   as: "pedidosPelucia",
 });
 PedidoPelucia.belongsTo(Produto, { foreignKey: "produtoId", as: "produto" });
+
+Produto.hasMany(ProdutoCustoHistorico, {
+  foreignKey: "produtoId",
+  as: "historicoCustos",
+  onDelete: "CASCADE",
+});
+ProdutoCustoHistorico.belongsTo(Produto, { foreignKey: "produtoId", as: "produto" });
+ProdutoCustoHistorico.belongsTo(Usuario, { foreignKey: "usuarioId", as: "usuario" });
+CotacaoMoeda.belongsTo(Usuario, { foreignKey: "usuarioId", as: "usuario" });
 PedidoPelucia.belongsTo(Usuario, {
   foreignKey: "criadoPorId",
   as: "criadoPor",
@@ -753,5 +764,7 @@ export {
   ProjetoLoja,
   ProjetoLojaMaquina,
   ProjetoLojaCusto,
+  ProdutoCustoHistorico,
+  CotacaoMoeda,
 };
 

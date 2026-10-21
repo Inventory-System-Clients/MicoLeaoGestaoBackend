@@ -668,6 +668,41 @@ const startServer = async () => {
 
     {
       const { DataTypes } = await import("sequelize");
+      const colunasCustoHistorico = await queryInterface.describeTable(
+        "produto_custo_historico",
+      );
+      if (!colunasCustoHistorico.compraId) {
+        await queryInterface.addColumn("produto_custo_historico", "compraId", {
+          type: DataTypes.UUID,
+          allowNull: true,
+        });
+        console.log("✅ Coluna compraId adicionada ao histórico de custo!");
+      }
+    }
+
+    {
+      // Primeira cotação do dólar (R$ 5,00), valendo desde sempre, pra
+      // compras em dólar já existentes terem conversão. Trocas depois são
+      // feitas em Financeiro > Configuração de moeda e só valem pra frente.
+      const { CotacaoMoeda } = await import("./models/index.js");
+      const { COTACAO_DOLAR_PADRAO } = await import(
+        "./services/cotacaoService.js"
+      );
+      const totalCotacoesDolar = await CotacaoMoeda.count({
+        where: { moeda: "USD" },
+      });
+      if (totalCotacoesDolar === 0) {
+        await CotacaoMoeda.create({
+          moeda: "USD",
+          valorEmReal: COTACAO_DOLAR_PADRAO,
+          vigenteDesde: new Date("2000-01-01T00:00:00.000Z"),
+        });
+        console.log("✅ Cotação inicial do dólar (R$ 5,00) registrada!");
+      }
+    }
+
+    {
+      const { DataTypes } = await import("sequelize");
       const colunasPecas = await queryInterface.describeTable("pecas");
 
       if (!colunasPecas.quantidadeQuebrada) {

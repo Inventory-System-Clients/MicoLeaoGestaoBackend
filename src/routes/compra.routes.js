@@ -5,6 +5,7 @@ import {
   conferirRecebimentoCompra,
   criarCompra,
   deletarCompra,
+  desfazerRecebimentoCompra,
   historicoPrecos,
   listarCompras,
 } from "../controllers/compraController.js";
@@ -31,6 +32,11 @@ router.patch(
   "/:id/conferencia",
   registrarLog("CONFERIR_RECEBIMENTO_COMPRA", "Compra"),
   conferirRecebimentoCompra,
+);
+router.patch(
+  "/:id/desfazer-recebimento",
+  registrarLog("DESFAZER_RECEBIMENTO_COMPRA", "Compra"),
+  desfazerRecebimentoCompra,
 );
 router.delete(
   "/:id",

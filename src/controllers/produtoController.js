@@ -1,4 +1,12 @@
-import { Produto } from "../models/index.js";
+import { Produto, ProdutoCustoHistorico, Usuario } from "../models/index.js";
+import { registrarTrocaCustoProduto } from "../services/custoProdutoService.js";
+
+const normalizarCusto = (valor) => {
+  if (valor === undefined || valor === null || valor === "") return null;
+  const numero = Number(String(valor).replace(",", "."));
+  if (!Number.isFinite(numero) || numero < 0) return NaN;
+  return Number(numero.toFixed(2));
+};
 
 // US06 - Listar produtos
 export const listarProdutos = async (req, res) => {
@@ -37,7 +45,13 @@ export const obterProduto = async (req, res) => {
       return res.status(404).json({ error: "Produto não encontrado" });
     }
 
-    res.json(produto);
+    const historicoCustos = await ProdutoCustoHistorico.findAll({
+      where: { produtoId: produto.id },
+      order: [["vigenteDesde", "DESC"]],
+      include: [{ model: Usuario, as: "usuario", attributes: ["id", "nome"] }],
+    });
+
+    res.json({ ...produto.toJSON(), historicoCustos });
   } catch (error) {
     console.error("Erro ao obter produto:", error);
     res.status(500).json({ error: "Erro ao obter produto" });
@@ -62,6 +76,11 @@ export const criarProduto = async (req, res) => {
       ativo,
     } = req.body;
 
+    const custoNormalizado = normalizarCusto(custoUnitario);
+    if (Number.isNaN(custoNormalizado)) {
+      return res.status(400).json({ error: "Custo unitário inválido" });
+    }
+
     if (!nome) {
       return res.status(400).json({ error: "Nome do produto é obrigatório" });
     }
@@ -82,11 +101,18 @@ export const criarProduto = async (req, res) => {
       tamanho,
       emoji,
       preco,
-      custoUnitario,
+      custoUnitario: custoNormalizado ?? undefined,
       estoqueAtual,
       estoqueMinimo,
       imagemUrl,
       ativo,
+    });
+
+    await registrarTrocaCustoProduto({
+      produtoId: produto.id,
+      custoAnterior: 0,
+      custoNovo: custoNormalizado,
+      usuarioId: req.usuario?.id,
     });
 
     res.locals.entityId = produto.id;
@@ -121,6 +147,11 @@ export const atualizarProduto = async (req, res) => {
       ativo,
     } = req.body;
 
+    const custoNormalizado = normalizarCusto(custoUnitario);
+    if (Number.isNaN(custoNormalizado)) {
+      return res.status(400).json({ error: "Custo unitário inválido" });
+    }
+
     // Verificar código duplicado se estiver mudando
     if (codigo && codigo !== produto.codigo) {
       const produtoExistente = await Produto.findOne({ where: { codigo } });
@@ -128,6 +159,8 @@ export const atualizarProduto = async (req, res) => {
         return res.status(400).json({ error: "Código de produto já existe" });
       }
     }
+
+    const custoAnterior = produto.custoUnitario;
 
     await produto.update({
       codigo: codigo ?? produto.codigo,
@@ -137,11 +170,18 @@ export const atualizarProduto = async (req, res) => {
       tamanho: tamanho ?? produto.tamanho,
       emoji: emoji ?? produto.emoji,
       preco: preco ?? produto.preco,
-      custoUnitario: custoUnitario ?? produto.custoUnitario,
+      custoUnitario: custoNormalizado ?? produto.custoUnitario,
       estoqueAtual: estoqueAtual ?? produto.estoqueAtual,
       estoqueMinimo: estoqueMinimo ?? produto.estoqueMinimo,
       imagemUrl: imagemUrl ?? produto.imagemUrl,
       ativo: ativo ?? produto.ativo,
+    });
+
+    await registrarTrocaCustoProduto({
+      produtoId: produto.id,
+      custoAnterior,
+      custoNovo: custoNormalizado,
+      usuarioId: req.usuario?.id,
     });
 
     res.json(produto);
