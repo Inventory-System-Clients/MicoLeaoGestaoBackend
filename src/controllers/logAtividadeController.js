@@ -1,12 +1,15 @@
 import { Op } from "sequelize";
 import { LogAtividade, Produto, Usuario } from "../models/index.js";
+import { removerCamposSensiveis } from "../middlewares/auth.js";
 
 const toDateStart = (value) => (value ? new Date(`${value}T00:00:00`) : null);
 const toDateEnd = (value) => (value ? new Date(`${value}T23:59:59.999`) : null);
 
 const sameId = (a, b) => String(a ?? "") === String(b ?? "");
 
-const getDetalhes = (log) => log?.detalhes || {};
+// Logs antigos foram gravados com o corpo da requisição inteiro (inclusive
+// senha); remove os campos sensíveis antes de devolver.
+const getDetalhes = (log) => removerCamposSensiveis(log?.detalhes || {});
 
 export const normalizarLogAtividade = (log, produto = null) => {
   const json = typeof log.toJSON === "function" ? log.toJSON() : log;

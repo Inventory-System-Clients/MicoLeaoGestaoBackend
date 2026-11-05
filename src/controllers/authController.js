@@ -60,6 +60,15 @@ export const login = async (req, res) => {
 
 // US01 - Registro de novo usuário
 export const registrar = async (req, res) => {
+  // Cadastro público desligado: qualquer pessoa criava conta ativa com
+  // token. Usuários agora só são criados pelo Admin (POST /api/usuarios).
+  // PERMITIR_REGISTRO_PUBLICO=true religa, se algum dia for necessário.
+  if (process.env.PERMITIR_REGISTRO_PUBLICO !== "true") {
+    return res.status(403).json({
+      error: "Cadastro público desativado. Peça ao administrador para criar seu acesso.",
+    });
+  }
+
   try {
     const { nome, email, senha, telefone, role } = req.body;
 

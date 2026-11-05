@@ -9,7 +9,7 @@ import { autenticar } from "../middlewares/auth.js";
 const router = express.Router();
 
 // Buscar últimas movimentações de cada veículo
-router.get("/ultimas", ultimasMovimentacoesPorVeiculo);
+router.get("/ultimas", autenticar, ultimasMovimentacoesPorVeiculo);
 
 // Registrar retirada ou devolução
 router.post("/", autenticar, registrarMovimentacaoVeiculo);

@@ -17,6 +17,10 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 const dataRetentionEnabled = process.env.DATA_RETENTION_ENABLED === "true";
 
+// O Render fica na frente com um proxy: sem isso req.ip é sempre o IP do
+// proxy (usado no limite de tentativas do modo segurança e nos logs).
+app.set("trust proxy", 1);
+
 // Middlewares
 app.use(
   helmet({
@@ -95,20 +99,6 @@ app.get("/", (req, res) => {
 // Health check
 app.get("/health", (req, res) => {
   res.json({ status: "OK", timestamp: new Date().toISOString() });
-});
-
-// Debug endpoint - remover em produção
-app.get("/debug/admin", async (req, res) => {
-  const { Usuario } = await import("./models/index.js");
-  const admin = await Usuario.findOne({
-    where: { email: process.env.ADMIN_EMAIL || "admin@agarramais.com" },
-  });
-  res.json({
-    adminExists: !!admin,
-    email: admin?.email,
-    role: admin?.role,
-    ativo: admin?.ativo,
-  });
 });
 
 // Routes

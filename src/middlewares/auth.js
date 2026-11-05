@@ -165,6 +165,35 @@ export const verificarPermissaoLoja = (acao = "visualizar") => {
   };
 };
 
+// Campos que nunca podem ir para o log de atividades (o log guarda o corpo
+// da requisição). Comparação sem diferenciar maiúsculas.
+const CAMPOS_SENSIVEIS = new Set([
+  "senha",
+  "senhaatual",
+  "novasenha",
+  "confirmarsenha",
+  "password",
+  "token",
+]);
+
+// Copia o objeto trocando o valor de campos sensíveis por "[REMOVIDO]", em
+// qualquer nível. Usado ao gravar e ao devolver logs (cobre logs antigos que
+// já foram gravados com senha).
+export const removerCamposSensiveis = (valor) => {
+  if (Array.isArray(valor)) return valor.map(removerCamposSensiveis);
+  if (!valor || typeof valor !== "object" || valor instanceof Date) {
+    return valor;
+  }
+  return Object.fromEntries(
+    Object.entries(valor).map(([chave, conteudo]) => [
+      chave,
+      CAMPOS_SENSIVEIS.has(chave.toLowerCase())
+        ? "[REMOVIDO]"
+        : removerCamposSensiveis(conteudo),
+    ]),
+  );
+};
+
 // US03 - Middleware de Log de Atividades
 export const registrarLog = (acao, entidade = null) => {
   return async (req, res, next) => {
@@ -180,13 +209,13 @@ export const registrarLog = (acao, entidade = null) => {
           acao,
           entidade,
           entidadeId: req.params.id || res.locals.entityId,
-          detalhes: {
+          detalhes: removerCamposSensiveis({
             method: req.method,
             path: req.path,
             body: req.method !== "GET" ? req.body : undefined,
             params: req.params,
             query: req.query,
-          },
+          }),
           ipAddress: req.ip || req.connection.remoteAddress,
           userAgent: req.get("user-agent"),
         }).catch((err) => console.error("Erro ao criar log:", err));
