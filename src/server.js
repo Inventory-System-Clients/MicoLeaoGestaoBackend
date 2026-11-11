@@ -169,7 +169,7 @@ const startServer = async () => {
       ALTER TYPE "enum_usuarios_role" ADD VALUE IF NOT EXISTS 'FUNCIONARIO_CADASTRO';
     `);
     // Perfis novos: começam sem acesso (ver permissoes/acessos.js)
-    for (const perfil of ["CONSULTOR_VENDAS", "MOTORISTA", "ABASTECEDOR"]) {
+    for (const perfil of ["CONSULTOR_VENDAS", "MOTORISTA", "ABASTECEDOR", "FINANCEIRO"]) {
       await sequelize.query(
         `ALTER TYPE "enum_usuarios_role" ADD VALUE IF NOT EXISTS '${perfil}';`,
       );

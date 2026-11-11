@@ -62,6 +62,9 @@ import ProdutoCustoHistorico from "./ProdutoCustoHistorico.js";
 import CotacaoMoeda from "./CotacaoMoeda.js";
 import RegistroPonto from "./RegistroPonto.js";
 import LocalPonto from "./LocalPonto.js";
+import MetaLoja from "./MetaLoja.js";
+import ComissaoMeta from "./ComissaoMeta.js";
+import LancamentoMeta from "./LancamentoMeta.js";
 // MovimentaÃ§Ã£o de VeÃ­culo -> VeÃ­culo e UsuÃ¡rio
 MovimentacaoVeiculo.belongsTo(Veiculo, {
   as: "veiculo",
@@ -515,6 +518,14 @@ RegistroPonto.belongsTo(Usuario, { foreignKey: "criadoPorId", as: "criadoPor" })
 RegistroPonto.belongsTo(Usuario, { foreignKey: "desconsideradaPorId", as: "desconsideradaPor" });
 RegistroPonto.belongsTo(LocalPonto, { foreignKey: "localPontoId", as: "local" });
 LocalPonto.belongsTo(Loja, { foreignKey: "lojaId", as: "loja" });
+
+// Metas por loja -> comissões por usuário; lançamentos do financeiro
+MetaLoja.belongsTo(Loja, { foreignKey: "lojaId", as: "loja" });
+MetaLoja.hasMany(ComissaoMeta, { foreignKey: "metaId", as: "comissoes", onDelete: "CASCADE" });
+ComissaoMeta.belongsTo(MetaLoja, { foreignKey: "metaId", as: "meta" });
+ComissaoMeta.belongsTo(Usuario, { foreignKey: "usuarioId", as: "usuario" });
+LancamentoMeta.belongsTo(Loja, { foreignKey: "lojaId", as: "loja" });
+LancamentoMeta.belongsTo(Usuario, { foreignKey: "criadoPorId", as: "criadoPor" });
 PedidoPelucia.belongsTo(Usuario, {
   foreignKey: "criadoPorId",
   as: "criadoPor",
@@ -804,5 +815,8 @@ export {
   CotacaoMoeda,
   RegistroPonto,
   LocalPonto,
+  MetaLoja,
+  ComissaoMeta,
+  LancamentoMeta,
 };
 

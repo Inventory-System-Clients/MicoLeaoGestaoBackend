@@ -1089,6 +1089,31 @@ export const CATALOGO = [
     ],
   },
   {
+    area: "metas",
+    nome: "Metas por loja",
+    acoes: [
+      {
+        chave: "metas.minhas",
+        nome: "Ver a barra de progresso das metas em que tem comissão (só %)",
+        rotas: ["GET /api/metas/minhas"],
+      },
+      {
+        chave: "metas.gerenciar",
+        nome: "Metas por loja: lançar dinheiro, cadastrar metas e comissões (vê valores)",
+        rotas: [
+          "GET /api/metas",
+          "PUT /api/metas",
+          "POST /api/metas/copiar-mes-anterior",
+          "GET /api/metas/lancamentos",
+          "POST /api/metas/lancamentos",
+          "DELETE /api/metas/lancamentos/:id",
+          "DELETE /api/metas/:id",
+        ],
+        telas: ["/metas"],
+      },
+    ],
+  },
+  {
     area: "ponto",
     nome: "Ponto",
     acoes: [
