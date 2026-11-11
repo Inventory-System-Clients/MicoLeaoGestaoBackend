@@ -26,6 +26,7 @@ import {
   cotacaoNaData,
 } from "../services/cotacaoService.js";
 import { temAcao } from "../permissoes/acessos.js";
+import { gerarSkuProduto } from "../utils/skuProduto.js";
 
 const STATUS_VALIDOS = ["PESQUISANDO", "COMPRADO", "RECEBIDO"];
 const MOEDAS_VALIDAS = ["BRL", "USD"];
@@ -189,6 +190,8 @@ const validarItem = async (item, transaction) => {
   let produtoId = item.produtoId || null;
   let insumoId = item.insumoId || null;
   let pecaId = item.pecaId || null;
+  // Produto: o SKU do item é sempre o do cadastro (gerado pelo sistema)
+  let skuDoProduto = null;
 
   if ([produtoId, insumoId, pecaId].filter(Boolean).length > 1) {
     throw new ErroValidacaoCompra("Cada item deve ter no máximo um produto, insumo ou peça");
@@ -237,18 +240,21 @@ const validarItem = async (item, transaction) => {
     } else {
       const produtoCriado = await Produto.create(
         {
-          codigo: item.sku || null,
+          // SKU de produto é gerado pelo sistema (o digitado é ignorado)
+          codigo: await gerarSkuProduto(transaction),
           nome: nomeItem,
           custoUnitario: item.valorUnitario || null,
         },
         { transaction },
       );
       produtoId = produtoCriado.id;
+      skuDoProduto = produtoCriado.codigo;
     }
   } else {
     if (produtoId) {
       const produto = await Produto.findByPk(produtoId, { transaction });
       if (!produto) throw new ErroValidacaoCompra(`Produto informado não encontrado (${nomeItem})`);
+      skuDoProduto = produto.codigo;
     }
     if (insumoId) {
       const insumo = await Insumo.findByPk(insumoId, { transaction });
@@ -266,7 +272,7 @@ const validarItem = async (item, transaction) => {
     insumoId,
     pecaId,
     nomeItem,
-    sku: item.sku || null,
+    sku: produtoId ? skuDoProduto : item.sku || null,
     quantidade: quantidadeNumerica,
     unidade: item.unidade || null,
     valorUnitario: item.valorUnitario || null,

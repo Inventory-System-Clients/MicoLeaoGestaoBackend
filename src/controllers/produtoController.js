@@ -1,4 +1,6 @@
 import { Produto, ProdutoCustoHistorico, Usuario } from "../models/index.js";
+import { sequelize } from "../database/connection.js";
+import { gerarSkuProduto } from "../utils/skuProduto.js";
 import { registrarTrocaCustoProduto } from "../services/custoProdutoService.js";
 import {
   buscarNomeRepetido,
@@ -66,8 +68,8 @@ export const obterProduto = async (req, res) => {
 // US06 - Criar produto
 export const criarProduto = async (req, res) => {
   try {
+    // O SKU (`codigo`) não é mais digitado: o sistema gera (utils/skuProduto.js)
     const {
-      codigo,
       nome,
       descricao,
       categoria,
@@ -97,28 +99,25 @@ export const criarProduto = async (req, res) => {
         .json({ error: mensagemNomeRepetido("um produto", nomeRepetido) });
     }
 
-    // Verificar se código já existe (se fornecido)
-    if (codigo) {
-      const produtoExistente = await Produto.findOne({ where: { codigo } });
-      if (produtoExistente) {
-        return res.status(400).json({ error: "Código de produto já existe" });
-      }
-    }
-
-    const produto = await Produto.create({
-      codigo,
-      nome,
-      descricao,
-      categoria,
-      tamanho,
-      emoji,
-      preco,
-      custoUnitario: custoNormalizado ?? undefined,
-      estoqueAtual,
-      estoqueMinimo,
-      imagemUrl,
-      ativo,
-    });
+    const produto = await sequelize.transaction(async (transaction) =>
+      Produto.create(
+        {
+          codigo: await gerarSkuProduto(transaction),
+          nome,
+          descricao,
+          categoria,
+          tamanho,
+          emoji,
+          preco,
+          custoUnitario: custoNormalizado ?? undefined,
+          estoqueAtual,
+          estoqueMinimo,
+          imagemUrl,
+          ativo,
+        },
+        { transaction },
+      ),
+    );
 
     await registrarTrocaCustoProduto({
       produtoId: produto.id,
@@ -144,8 +143,8 @@ export const atualizarProduto = async (req, res) => {
       return res.status(404).json({ error: "Produto não encontrado" });
     }
 
+    // SKU (`codigo`) é do sistema: não muda na edição
     const {
-      codigo,
       nome,
       descricao,
       categoria,
@@ -164,13 +163,6 @@ export const atualizarProduto = async (req, res) => {
       return res.status(400).json({ error: "Custo unitário inválido" });
     }
 
-    // Verificar código duplicado se estiver mudando
-    if (codigo && codigo !== produto.codigo) {
-      const produtoExistente = await Produto.findOne({ where: { codigo } });
-      if (produtoExistente) {
-        return res.status(400).json({ error: "Código de produto já existe" });
-      }
-    }
 
     if (nome !== undefined && nome !== null) {
       if (!String(nome).trim()) {
@@ -192,7 +184,6 @@ export const atualizarProduto = async (req, res) => {
     const custoAnterior = produto.custoUnitario;
 
     await produto.update({
-      codigo: codigo ?? produto.codigo,
       nome: nome ?? produto.nome,
       descricao: descricao ?? produto.descricao,
       categoria: categoria ?? produto.categoria,
