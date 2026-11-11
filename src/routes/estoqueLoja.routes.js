@@ -8,7 +8,7 @@ import {
   criarOuAtualizarProdutoEstoque,
 } from "../controllers/estoqueLojaController.js";
 import { analisarEstoqueLoja } from "../controllers/estoqueAnaliseController.js";
-import { autenticar, registrarLog } from "../middlewares/auth.js";
+import { autenticar, autorizarRole, registrarLog } from "../middlewares/auth.js";
 
 const router = express.Router();
 
@@ -23,6 +23,10 @@ router.use((req, res, next) => {
   next();
 });
 
+// Alterar estoque: Admin, Chefe de Expedição e Cadastro (o Funcionário comum
+// não usa em nenhuma tela; dá pra liberar por usuário em Acessos)
+const podeAlterarEstoque = autorizarRole("ADMIN", "FUNCIONARIO_ESTOQUE", "FUNCIONARIO_CADASTRO");
+
 // IMPORTANTE: Rotas específicas DEVEM vir ANTES de rotas com parâmetros dinâmicos
 // Caso contrário, Express pode confundir 'alertas' ou 'varios' com um produtoId
 
@@ -35,6 +39,7 @@ router.get("/:lojaId", autenticar, listarEstoqueLoja);
 router.post(
   "/:lojaId/varios",
   autenticar,
+  podeAlterarEstoque,
   registrarLog("ATUALIZAR_VARIOS_ESTOQUES", "EstoqueLoja"),
   atualizarVariosEstoques
 );
@@ -42,6 +47,7 @@ router.post(
 router.post(
   "/:lojaId",
   autenticar,
+  podeAlterarEstoque,
   registrarLog("CRIAR_ATUALIZAR_ESTOQUE", "EstoqueLoja"),
   criarOuAtualizarProdutoEstoque
 );
@@ -50,6 +56,7 @@ router.post(
 router.put(
   "/:lojaId/varios",
   autenticar,
+  podeAlterarEstoque,
   registrarLog("ATUALIZAR_VARIOS_ESTOQUES", "EstoqueLoja"),
   atualizarVariosEstoques
 );
@@ -57,6 +64,7 @@ router.put(
 router.put(
   "/:lojaId/:produtoId",
   autenticar,
+  podeAlterarEstoque,
   registrarLog("ATUALIZAR_ESTOQUE_LOJA", "EstoqueLoja"),
   atualizarEstoqueLoja
 );
@@ -65,6 +73,7 @@ router.put(
 router.delete(
   "/:lojaId/:produtoId",
   autenticar,
+  podeAlterarEstoque,
   registrarLog("DELETAR_ESTOQUE_LOJA", "EstoqueLoja"),
   deletarEstoqueLoja
 );

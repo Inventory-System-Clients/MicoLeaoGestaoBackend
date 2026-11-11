@@ -7,12 +7,12 @@ router.use(autenticar);
 
 // GET /registro-dinheiro/valor-esperado — usado por qualquer funcionário
 // enquanto está contando o dinheiro, pra ver a divergência em tempo real.
-router.get("/valor-esperado", registroDinheiroController.valorEsperado);
+router.get("/valor-esperado", requireAdmin, registroDinheiroController.valorEsperado);
 
 // GET /registro-dinheiro/ultimo-fechamento — pré-preenche a data de início
 // do próximo fechamento com o fim do último já registrado pra essa
 // máquina/loja.
-router.get("/ultimo-fechamento", registroDinheiroController.ultimoFechamento);
+router.get("/ultimo-fechamento", requireAdmin, registroDinheiroController.ultimoFechamento);
 
 // POST /registro-dinheiro — registrar uma contagem é tarefa operacional de
 // qualquer funcionário, não é "ver financeiro".

@@ -25,6 +25,9 @@ const LIMITE_EXCLUIR_SOMENTE_PROPRIAS_NO_DIA = {
 export const LIMITES_PADRAO = {
   "sangrias.excluir": LIMITE_EXCLUIR_SOMENTE_PROPRIAS_NO_DIA,
   "sangrias.excluirEmLote": LIMITE_EXCLUIR_SOMENTE_PROPRIAS_NO_DIA,
+  // Histórico de sangrias na tela já era só do Admin; pela API, os outros
+  // também passam a receber só as próprias
+  "sangrias.ver": { somenteProprias: true },
 };
 
 // Sempre liberado pra quem está logado: ver e editar o próprio perfil
