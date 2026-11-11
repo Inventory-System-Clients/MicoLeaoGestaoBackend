@@ -1,3 +1,4 @@
+import { Op } from "sequelize";
 import {
   Maquina,
   Produto,
@@ -12,6 +13,17 @@ export const produtoSugeridoPorMaquina = async (req, res) => {
     const maquina = await Maquina.findByPk(id);
     if (!maquina) {
       return res.status(404).json({ error: "Máquina não encontrada" });
+    }
+
+    // 0. Produto cadastrado na máquina (campo `nome`, atualizado a cada
+    // abastecimento)
+    if (maquina.nome) {
+      const produtoDaMaquina = await Produto.findOne({
+        where: { nome: { [Op.iLike]: maquina.nome.trim() } },
+      });
+      if (produtoDaMaquina) {
+        return res.json({ produtoSugerido: produtoDaMaquina });
+      }
     }
 
     // 1. Buscar última movimentação da máquina

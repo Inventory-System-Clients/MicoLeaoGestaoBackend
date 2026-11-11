@@ -242,6 +242,21 @@ export const registrarMovimentacao = async (req, res) => {
 
       await MovimentacaoProduto.bulkCreate(detalhesProdutos);
 
+      // A pelúcia abastecida passa a ser o Produto da máquina (campo `nome`,
+      // que o cadastro de máquina já escolhe da lista de produtos). Se vierem
+      // várias, vale a de maior quantidade abastecida.
+      const abastecida = produtos
+        .filter((p) => p.produtoId && Number(p.quantidadeAbastecida) > 0)
+        .sort((a, b) => Number(b.quantidadeAbastecida) - Number(a.quantidadeAbastecida))[0];
+      if (abastecida) {
+        const produtoAbastecido = await Produto.findByPk(abastecida.produtoId, {
+          attributes: ["nome"],
+        });
+        if (produtoAbastecido && produtoAbastecido.nome !== maquina.nome) {
+          await maquina.update({ nome: produtoAbastecido.nome });
+        }
+      }
+
       // Descontar do estoque da loja os produtos abastecidos
       for (const produto of produtos) {
         if (produto.quantidadeAbastecida && produto.quantidadeAbastecida > 0) {
