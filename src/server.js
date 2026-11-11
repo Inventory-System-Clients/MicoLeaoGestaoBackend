@@ -157,6 +157,21 @@ const startServer = async () => {
         });
         console.log("✅ Coluna jornada_diaria_minutos adicionada aos usuários!");
       }
+
+      // Movimentação em passos: foto do relógio e checklist da visita
+      const colunasMovimentacoes = await queryInterface.describeTable("movimentacoes");
+      if (!colunasMovimentacoes.foto_relogio_url) {
+        await queryInterface.addColumn("movimentacoes", "foto_relogio_url", {
+          type: DataTypes.TEXT,
+          allowNull: true,
+        });
+      }
+      if (!colunasMovimentacoes.checklist) {
+        await queryInterface.addColumn("movimentacoes", "checklist", {
+          type: DataTypes.JSONB,
+          allowNull: true,
+        });
+      }
     }
 
     await sequelize.query(`

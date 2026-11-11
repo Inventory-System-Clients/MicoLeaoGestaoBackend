@@ -108,6 +108,18 @@ const Movimentacao = sequelize.define(
       allowNull: true,
       comment: "Valor de pagamento digital (maquininha/pix)",
     },
+    // Movimentação em passos (Consultor): foto do relógio e checklist da visita
+    fotoRelogioUrl: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      field: "foto_relogio_url",
+    },
+    checklist: {
+      type: DataTypes.JSONB,
+      allowNull: true,
+      comment:
+        "Passos feitos na visita: { limpezaVidro, recolhimentoFichas, limpezaPiso, portas, cadeados, chaves }",
+    },
     // US10 - Observações
     observacoes: {
       type: DataTypes.TEXT,

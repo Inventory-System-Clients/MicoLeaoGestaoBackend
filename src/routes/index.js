@@ -24,6 +24,7 @@ import fechamentoMensalRelatorioRoutes from "./fechamentoMensalRelatorio.routes.
 import sangriaRoutes from "./sangria.routes.js";
 import pontoRoutes from "./ponto.routes.js";
 import metaRoutes from "./meta.routes.js";
+import visitaRoutes from "./visita.routes.js";
 import logAtividadeRoutes from "./logAtividade.routes.js";
 import assistenteIaRoutes from "./assistenteIa.routes.js";
 import roteiroRoutes from "./roteiro.routes.js";
@@ -101,5 +102,6 @@ router.use("/projetos-loja", projetoLojaRoutes);
 router.use("/permissoes", permissoesRoutes);
 router.use("/ponto", pontoRoutes);
 router.use("/metas", metaRoutes);
+router.use("/visitas", visitaRoutes);
 
 export default router;

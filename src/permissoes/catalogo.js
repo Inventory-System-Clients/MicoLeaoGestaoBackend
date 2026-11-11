@@ -1089,6 +1089,18 @@ export const CATALOGO = [
     ],
   },
   {
+    area: "visitas",
+    nome: "Movimentação em passos",
+    acoes: [
+      {
+        chave: "visitas.registrar",
+        nome: "Fazer movimentação em passos nas próprias lojas (foto, abastecimento, limpeza, conferência)",
+        rotas: ["GET /api/visitas/lojas", "GET /api/visitas/maquinas/:id", "POST /api/visitas"],
+        telas: ["/nova-movimentacao"],
+      },
+    ],
+  },
+  {
     area: "metas",
     nome: "Metas por loja",
     acoes: [

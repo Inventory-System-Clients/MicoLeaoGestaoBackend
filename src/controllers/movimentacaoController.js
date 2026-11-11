@@ -34,6 +34,8 @@ export const registrarMovimentacao = async (req, res) => {
       produtos, // Array de { produtoId, quantidadeSaiu, quantidadeAbastecida }
       quantidade_notas_entrada,
       valor_entrada_maquininha_pix,
+      fotoRelogioUrl,
+      checklist,
     } = req.body;
 
     // Validações
@@ -208,6 +210,8 @@ export const registrarMovimentacao = async (req, res) => {
       quantidade_notas_entrada: quantidade_notas_entrada ?? null,
       valor_entrada_maquininha_pix: valor_entrada_maquininha_pix ?? null,
       totalPos: totalPosCalculado,
+      fotoRelogioUrl: fotoRelogioUrl || null,
+      checklist: checklist || null,
     });
 
     console.log("✅ [registrarMovimentacao] Movimentação criada:", {
