@@ -173,7 +173,8 @@ export const CATALOGO = [
       { chave: "maquinas.excluir", nome: "Excluir máquina", rotas: ["DELETE /api/maquinas/:id"] },
       {
         chave: "maquinas.visaoGeral",
-        nome: "Ver painel Visão de Máquinas",
+        // Desde 2026-11-11 é a lista de máquinas do menu (a antiga /maquinas redireciona pra cá)
+        nome: "Ver lista de máquinas (Visão das Máquinas)",
         telas: ["/visao-maquinas"],
         perfisPadrao: ["FUNCIONARIO_CADASTRO"],
         requer: ["maquinas.ver"],
