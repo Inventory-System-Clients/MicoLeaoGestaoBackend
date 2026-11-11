@@ -105,19 +105,29 @@ const visitaController = {
           ? Produto.findOne({ where: { nome: { [Op.iLike]: maquina.nome.trim() } }, attributes: ["id"] })
           : null,
       ]);
+      const produtoSugeridoId =
+        produtoDaMaquina?.id || ultima?.detalhesProdutos?.[0]?.produtoId || null;
+      const lista = estoque
+        .filter((item) => item.produto)
+        .map((item) => ({
+          produtoId: item.produtoId,
+          nome: item.produto.nome,
+          codigo: item.produto.codigo,
+          quantidade: Number(item.quantidade),
+        }));
+      // O produto cadastrado na máquina sempre aparece (já escolhido), mesmo
+      // sem estoque na loja — aí mostra "0 na loja"
+      if (produtoSugeridoId && !lista.some((item) => item.produtoId === produtoSugeridoId)) {
+        const produto = await Produto.findByPk(produtoSugeridoId, { attributes: ["id", "nome", "codigo"] });
+        if (produto) {
+          lista.push({ produtoId: produto.id, nome: produto.nome, codigo: produto.codigo, quantidade: 0 });
+        }
+      }
       res.json({
         maquina,
         ultima,
-        produtoSugeridoId: produtoDaMaquina?.id || ultima?.detalhesProdutos?.[0]?.produtoId || null,
-        estoque: estoque
-          .filter((item) => item.produto)
-          .map((item) => ({
-            produtoId: item.produtoId,
-            nome: item.produto.nome,
-            codigo: item.produto.codigo,
-            quantidade: Number(item.quantidade),
-          }))
-          .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR")),
+        produtoSugeridoId,
+        estoque: lista.sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR")),
       });
     } catch (error) {
       console.error("Erro ao carregar máquina da movimentação:", error);
