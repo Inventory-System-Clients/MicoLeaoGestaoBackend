@@ -11,9 +11,9 @@ export const PERFIS_LEGADOS = ["FUNCIONARIO", "FUNCIONARIO_ESTOQUE", "FUNCIONARI
 // Perfis que começam sem nada: só usam o que está na lista (padrão + ajustes).
 // Para mudar o padrão de um desses perfis, edite a lista aqui.
 export const PADRAO_PERFIS_RESTRITOS = {
-  CONSULTOR_VENDAS: [],
-  MOTORISTA: [],
-  ABASTECEDOR: [],
+  CONSULTOR_VENDAS: ["ponto.bater"],
+  MOTORISTA: ["ponto.bater"],
+  ABASTECEDOR: ["ponto.bater"],
 };
 
 // Limites que já vêm para todos, menos Admin e Desenvolvedor. No usuário dá

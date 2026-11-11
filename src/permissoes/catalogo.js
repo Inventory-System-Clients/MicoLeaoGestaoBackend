@@ -1089,6 +1089,37 @@ export const CATALOGO = [
     ],
   },
   {
+    area: "ponto",
+    nome: "Ponto",
+    acoes: [
+      {
+        chave: "ponto.bater",
+        nome: "Bater o próprio ponto (entrada, intervalo e saída)",
+        rotas: ["GET /api/ponto/meu", "POST /api/ponto/batidas"],
+        telas: ["/ponto"],
+      },
+      {
+        chave: "ponto.gerenciar",
+        nome: "Controle de ponto: ver todos, ajustar batidas, locais e jornadas",
+        somenteAdmin: true,
+        rotas: [
+          "GET /api/ponto/admin/painel",
+          "GET /api/ponto/admin/batidas",
+          "GET /api/ponto/admin/espelho",
+          "GET /api/ponto/admin/resumo",
+          "POST /api/ponto/admin/ajustes",
+          "PATCH /api/ponto/admin/batidas/:id/desconsiderar",
+          "GET /api/ponto/admin/locais",
+          "POST /api/ponto/admin/locais",
+          "PUT /api/ponto/admin/locais/:id",
+          "DELETE /api/ponto/admin/locais/:id",
+          "PUT /api/ponto/admin/jornadas/:usuarioId",
+        ],
+        telas: ["/controle-ponto"],
+      },
+    ],
+  },
+  {
     area: "usuarios",
     nome: "Usuários",
     acoes: [

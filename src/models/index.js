@@ -60,6 +60,8 @@ import ProjetoLojaMidia from "./ProjetoLojaMidia.js";
 import ProjetoLojaMaquinaHistorico from "./ProjetoLojaMaquinaHistorico.js";
 import ProdutoCustoHistorico from "./ProdutoCustoHistorico.js";
 import CotacaoMoeda from "./CotacaoMoeda.js";
+import RegistroPonto from "./RegistroPonto.js";
+import LocalPonto from "./LocalPonto.js";
 // MovimentaÃ§Ã£o de VeÃ­culo -> VeÃ­culo e UsuÃ¡rio
 MovimentacaoVeiculo.belongsTo(Veiculo, {
   as: "veiculo",
@@ -505,6 +507,14 @@ Produto.hasMany(ProdutoCustoHistorico, {
 ProdutoCustoHistorico.belongsTo(Produto, { foreignKey: "produtoId", as: "produto" });
 ProdutoCustoHistorico.belongsTo(Usuario, { foreignKey: "usuarioId", as: "usuario" });
 CotacaoMoeda.belongsTo(Usuario, { foreignKey: "usuarioId", as: "usuario" });
+
+// Ponto -> Usuário, local e quem ajustou
+Usuario.hasMany(RegistroPonto, { foreignKey: "usuarioId", as: "registrosPonto" });
+RegistroPonto.belongsTo(Usuario, { foreignKey: "usuarioId", as: "usuario" });
+RegistroPonto.belongsTo(Usuario, { foreignKey: "criadoPorId", as: "criadoPor" });
+RegistroPonto.belongsTo(Usuario, { foreignKey: "desconsideradaPorId", as: "desconsideradaPor" });
+RegistroPonto.belongsTo(LocalPonto, { foreignKey: "localPontoId", as: "local" });
+LocalPonto.belongsTo(Loja, { foreignKey: "lojaId", as: "loja" });
 PedidoPelucia.belongsTo(Usuario, {
   foreignKey: "criadoPorId",
   as: "criadoPor",
@@ -792,5 +802,7 @@ export {
   ProjetoLojaMaquinaHistorico,
   ProdutoCustoHistorico,
   CotacaoMoeda,
+  RegistroPonto,
+  LocalPonto,
 };
 

@@ -148,6 +148,15 @@ const startServer = async () => {
         });
         console.log("✅ Coluna acessos_personalizados adicionada aos usuários!");
       }
+      // Jornada diária do ponto (minutos)
+      if (!colunasUsuarios.jornada_diaria_minutos) {
+        await queryInterface.addColumn("usuarios", "jornada_diaria_minutos", {
+          type: DataTypes.INTEGER,
+          allowNull: false,
+          defaultValue: 480,
+        });
+        console.log("✅ Coluna jornada_diaria_minutos adicionada aos usuários!");
+      }
     }
 
     await sequelize.query(`

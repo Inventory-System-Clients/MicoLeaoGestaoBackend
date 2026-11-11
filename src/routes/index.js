@@ -22,6 +22,7 @@ import manutencaoRoutes from "./manutencao.routes.js";
 import alertaMovimentacaoRoutes from "./alertaMovimentacao.routes.js";
 import fechamentoMensalRelatorioRoutes from "./fechamentoMensalRelatorio.routes.js";
 import sangriaRoutes from "./sangria.routes.js";
+import pontoRoutes from "./ponto.routes.js";
 import logAtividadeRoutes from "./logAtividade.routes.js";
 import assistenteIaRoutes from "./assistenteIa.routes.js";
 import roteiroRoutes from "./roteiro.routes.js";
@@ -97,5 +98,6 @@ router.use("/sugestoes-compra", sugestaoCompraRoutes);
 router.use("/tipos-maquina", tipoMaquinaRoutes);
 router.use("/projetos-loja", projetoLojaRoutes);
 router.use("/permissoes", permissoesRoutes);
+router.use("/ponto", pontoRoutes);
 
 export default router;

@@ -56,6 +56,13 @@ const Usuario = sequelize.define(
       comment:
         "Ajustes de acesso do usuário sobre o padrão do perfil: { adicionadas: [chaves], removidas: [chaves] } (ver src/permissoes)",
     },
+    jornadaDiariaMinutos: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      defaultValue: 480,
+      field: "jornada_diaria_minutos",
+      comment: "Jornada do dia em minutos (ponto): passou disso, conta hora extra",
+    },
   },
   {
     tableName: "usuarios",
