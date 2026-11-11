@@ -8,6 +8,8 @@ import {
   Loja,
 } from "../models/index.js";
 import { Op } from "sequelize";
+import { temAcao } from "../permissoes/acessos.js";
+import { limitesDe, inicioDosUltimosDias } from "../permissoes/limites.js";
 
 const movimentacoesEmAndamento = new Set();
 
@@ -71,7 +73,7 @@ export const registrarMovimentacao = async (req, res) => {
         typeof ultimaMov.contadorIn === "number" &&
         ultimaMov.contadorIn !== null &&
         contadorIn < ultimaMov.contadorIn &&
-        !["ADMIN", "DESENVOLVEDOR", "FUNCIONARIO_CADASTRO"].includes(req.usuario.role)
+        !temAcao(req.usuario, "movimentacoes.corrigirContadores")
       ) {
         return res.status(400).json({
           error: `O contador IN (${contadorIn}) não pode ser menor que o anterior. Verifique o valor digitado ou peça ajuda ao gestor.`,
@@ -84,7 +86,7 @@ export const registrarMovimentacao = async (req, res) => {
         typeof ultimaMov.contadorOut === "number" &&
         ultimaMov.contadorOut !== null &&
         contadorOut < ultimaMov.contadorOut &&
-        !["ADMIN", "DESENVOLVEDOR", "FUNCIONARIO_CADASTRO"].includes(req.usuario.role)
+        !temAcao(req.usuario, "movimentacoes.corrigirContadores")
       ) {
         return res.status(400).json({
           error: `O contador OUT (${contadorOut}) não pode ser menor que o anterior. Verifique o valor digitado ou peça ajuda ao gestor.`,
@@ -95,7 +97,7 @@ export const registrarMovimentacao = async (req, res) => {
       ultimaMov &&
       typeof ultimaMov.totalPos === "number" &&
       totalPre > ultimaMov.totalPos &&
-      !["ADMIN", "DESENVOLVEDOR", "FUNCIONARIO_CADASTRO"].includes(req.usuario.role)
+      !temAcao(req.usuario, "movimentacoes.corrigirContadores")
     ) {
       return res.status(400).json({
         error: `Não é permitido abastecer a máquina com uma quantidade maior (${totalPre}) do que o total pós da última movimentação. Confira o que você digitou.`,
@@ -622,14 +624,22 @@ export const atualizarMovimentacao = async (req, res) => {
       return res.status(404).json({ error: "Movimentação não encontrada" });
     }
 
-    // Apenas admin ou o próprio usuário que criou pode editar
+    // Só quem lançou edita, a não ser que tenha "editar de outros"
     if (
-      !["ADMIN", "DESENVOLVEDOR", "FUNCIONARIO_CADASTRO"].includes(req.usuario.role) &&
+      !temAcao(req.usuario, "movimentacoes.editarDeOutros") &&
       movimentacao.usuarioId !== req.usuario.id
     ) {
       return res
         .status(403)
         .json({ error: "Você não pode editar esta movimentação" });
+    }
+
+    // Limite de acesso: só movimentações lançadas nos últimos N dias
+    const { dias: diasParaEditar } = limitesDe(req, "movimentacoes.editar");
+    if (diasParaEditar && new Date(movimentacao.createdAt) < inicioDosUltimosDias(diasParaEditar)) {
+      return res.status(403).json({
+        error: `Você só pode editar movimentações lançadas nos últimos ${diasParaEditar} dia(s).`,
+      });
     }
 
     const {

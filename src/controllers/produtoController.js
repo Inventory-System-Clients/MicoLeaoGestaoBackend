@@ -1,5 +1,10 @@
 import { Produto, ProdutoCustoHistorico, Usuario } from "../models/index.js";
 import { registrarTrocaCustoProduto } from "../services/custoProdutoService.js";
+import {
+  buscarNomeRepetido,
+  chaveNome,
+  mensagemNomeRepetido,
+} from "../utils/nomeCadastro.js";
 
 const normalizarCusto = (valor) => {
   if (valor === undefined || valor === null || valor === "") return null;
@@ -81,8 +86,15 @@ export const criarProduto = async (req, res) => {
       return res.status(400).json({ error: "Custo unitário inválido" });
     }
 
-    if (!nome) {
+    if (!nome || !String(nome).trim()) {
       return res.status(400).json({ error: "Nome do produto é obrigatório" });
+    }
+
+    const nomeRepetido = await buscarNomeRepetido(Produto, nome);
+    if (nomeRepetido) {
+      return res
+        .status(400)
+        .json({ error: mensagemNomeRepetido("um produto", nomeRepetido) });
     }
 
     // Verificar se código já existe (se fornecido)
@@ -157,6 +169,23 @@ export const atualizarProduto = async (req, res) => {
       const produtoExistente = await Produto.findOne({ where: { codigo } });
       if (produtoExistente) {
         return res.status(400).json({ error: "Código de produto já existe" });
+      }
+    }
+
+    if (nome !== undefined && nome !== null) {
+      if (!String(nome).trim()) {
+        return res.status(400).json({ error: "Nome do produto é obrigatório" });
+      }
+      // Só checa se o nome mudou de fato: duplicados antigos continuam editáveis
+      if (chaveNome(nome) !== chaveNome(produto.nome)) {
+        const nomeRepetido = await buscarNomeRepetido(Produto, nome, {
+          ignorarId: produto.id,
+        });
+        if (nomeRepetido) {
+          return res
+            .status(400)
+            .json({ error: mensagemNomeRepetido("um produto", nomeRepetido) });
+        }
       }
     }
 

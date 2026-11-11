@@ -10,11 +10,10 @@ import {
   Usuario,
   UsuarioLoja,
 } from "../models/index.js";
+import { temAcao } from "../permissoes/acessos.js";
 
 const usuarioPodeConferirLoja = async (usuario, lojaId) => {
-  if (
-    ["ADMIN", "DESENVOLVEDOR", "FUNCIONARIO_ESTOQUE"].includes(usuario.role)
-  ) {
+  if (temAcao(usuario, "lojas.todas")) {
     return true;
   }
 

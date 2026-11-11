@@ -1,4 +1,10 @@
 import { Loja, Maquina, UsuarioLoja, ExtintorLoja } from "../models/index.js";
+import {
+  STATUS_LOJA_EM_IMPLANTACAO,
+  ehLojaDeProjetoEmImplantacao,
+  whereSemLojaDeProjeto,
+} from "../utils/lojaProjeto.js";
+import { temAcao } from "../permissoes/acessos.js";
 
 const NOMES_DEPOSITO_PRINCIPAL = ["deposito principal", "depósito principal"];
 const ehDepositoPrincipal = (loja) =>
@@ -32,13 +38,11 @@ export const listarLojas = async (req, res) => {
   try {
     let lojas;
 
-    // Admin, desenvolvedor e funcionário de estoque veem todas as lojas
-    if (
-      ["ADMIN", "DESENVOLVEDOR", "FUNCIONARIO_ESTOQUE"].includes(
-        req.usuario.role,
-      )
-    ) {
+    // Quem tem "todas as lojas" (padrão: Admin, Dev e Chefe de Expedição)
+    // vê todas; os demais, só as autorizadas no cadastro
+    if (temAcao(req.usuario, "lojas.todas")) {
       lojas = await Loja.findAll({
+        where: whereSemLojaDeProjeto,
         include: [
           {
             model: Maquina,
@@ -76,7 +80,9 @@ export const listarLojas = async (req, res) => {
         ],
       });
 
-      lojas = permissoes.map((p) => p.Loja);
+      lojas = permissoes
+        .map((p) => p.Loja)
+        .filter((loja) => loja && !ehLojaDeProjetoEmImplantacao(loja));
     }
 
     res.json(lojas);
@@ -130,6 +136,7 @@ export const criarLoja = async (req, res) => {
       dataFimContrato,
       diasAvisoContrato,
       valorFichaPadrao,
+      projetoEmImplantacao,
     } = req.body;
 
     if (!nome) {
@@ -150,7 +157,9 @@ export const criarLoja = async (req, res) => {
       estado,
       responsavel,
       telefone,
-      statusOperacao: statusOperacao || "ATIVA",
+      statusOperacao: projetoEmImplantacao
+        ? STATUS_LOJA_EM_IMPLANTACAO
+        : statusOperacao || "ATIVA",
       dataInicio: dataInicio || null,
       observacoes: observacoes || null,
       dataFimContrato: dataFimContrato || null,
@@ -161,7 +170,12 @@ export const criarLoja = async (req, res) => {
       valorFichaPadrao: valorFichaNormalizado.informado
         ? valorFichaNormalizado.valor
         : VALOR_FICHA_PADRAO_DEFAULT,
-      ativo: statusOperacao ? statusOperacao !== "INATIVA" : true,
+      // Loja nova de Projeto Loja nasce escondida até o projeto ser concluído
+      ativo: projetoEmImplantacao
+        ? false
+        : statusOperacao
+          ? statusOperacao !== "INATIVA"
+          : true,
     });
 
     res.locals.entityId = loja.id;
@@ -226,6 +240,9 @@ export const atualizarLoja = async (req, res) => {
       }
     }
 
+    // Loja de projeto em implantação só vira ativa pelo "Concluir" do projeto
+    const lojaDeProjeto = ehLojaDeProjetoEmImplantacao(loja);
+
     await loja.update({
       nome: nome ?? loja.nome,
       endereco: endereco ?? loja.endereco,
@@ -233,7 +250,9 @@ export const atualizarLoja = async (req, res) => {
       estado: estado ?? loja.estado,
       responsavel: responsavel ?? loja.responsavel,
       telefone: telefone ?? loja.telefone,
-      statusOperacao: statusOperacao ?? loja.statusOperacao,
+      statusOperacao: lojaDeProjeto
+        ? loja.statusOperacao
+        : statusOperacao ?? loja.statusOperacao,
       dataInicio: dataInicio ?? loja.dataInicio,
       observacoes: observacoes ?? loja.observacoes,
       dataFimContrato: dataFimContrato ?? loja.dataFimContrato,
@@ -244,8 +263,9 @@ export const atualizarLoja = async (req, res) => {
       valorFichaPadrao: valorFichaNormalizado.informado
         ? valorFichaNormalizado.valor
         : loja.valorFichaPadrao,
-      ativo:
-        statusOperacao !== undefined
+      ativo: lojaDeProjeto
+        ? false
+        : statusOperacao !== undefined
           ? statusOperacao !== "INATIVA"
           : ativo ?? loja.ativo,
     });

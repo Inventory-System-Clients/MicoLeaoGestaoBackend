@@ -15,6 +15,7 @@ import {
   Usuario,
 } from "../models/index.js";
 import { obterOuCriarEstoqueCentral } from "./movimentacaoEstoqueLojaController.js";
+import { buscarNomeRepetido, mensagemNomeRepetido } from "../utils/nomeCadastro.js";
 import {
   registrarTrocaCustoProduto,
   removerCustosDaCompra,
@@ -24,6 +25,7 @@ import {
   converterParaReal,
   cotacaoNaData,
 } from "../services/cotacaoService.js";
+import { temAcao } from "../permissoes/acessos.js";
 
 const STATUS_VALIDOS = ["PESQUISANDO", "COMPRADO", "RECEBIDO"];
 const MOEDAS_VALIDAS = ["BRL", "USD"];
@@ -174,7 +176,7 @@ const responderCompra = async (req, res, compra, status = 200) => {
     compra?.moeda === "USD" ? await buscarHistoricoCotacao("USD") : null;
   const agregada = comAgregados(compra, historicoCotacao);
   const final =
-    req.usuario?.role === "FUNCIONARIO_ESTOQUE" ? mascararValoresCompra(agregada) : agregada;
+    temAcao(req.usuario, "compras.verValores") ? agregada : mascararValoresCompra(agregada);
   res.status(status).json(final);
 };
 
@@ -201,6 +203,17 @@ const validarItem = async (item, transaction) => {
     item.tipoItem || (produtoId ? "PRODUTO" : insumoId ? "INSUMO" : pecaId ? "PECA" : "PRODUTO");
 
   if (item.itemNovo && !produtoId && !insumoId && !pecaId) {
+    const [ModeloNovo, rotuloNovo] =
+      tipoItem === "INSUMO"
+        ? [Insumo, "um insumo"]
+        : tipoItem === "PECA"
+          ? [Peca, "uma peça"]
+          : [Produto, "um produto"];
+    const nomeRepetido = await buscarNomeRepetido(ModeloNovo, nomeItem, { transaction });
+    if (nomeRepetido) {
+      throw new ErroValidacaoCompra(mensagemNomeRepetido(rotuloNovo, nomeRepetido));
+    }
+
     if (tipoItem === "INSUMO") {
       const insumoCriado = await Insumo.create(
         {
@@ -388,7 +401,7 @@ export const listarCompras = async (req, res) => {
       compras = compras.filter((compra) => compra.valorGeralPedido <= valorMaxNumero);
     }
 
-    if (req.usuario?.role === "FUNCIONARIO_ESTOQUE") {
+    if (!temAcao(req.usuario, "compras.verValores")) {
       compras = compras.map(mascararValoresCompra);
     }
 
@@ -426,10 +439,10 @@ export const criarCompra = async (req, res) => {
 
     let sugestaoCompra = null;
     if (sugestaoCompraId) {
-      if (!["ADMIN", "DESENVOLVEDOR"].includes(req.usuario.role)) {
+      if (!temAcao(req.usuario, "compras.aceitarSugestao")) {
         await transaction.rollback();
         return res.status(403).json({
-          error: "Só ADMIN pode aceitar uma sugestão de compra",
+          error: "Você não tem acesso para aceitar uma sugestão de compra",
         });
       }
       sugestaoCompra = await SugestaoCompra.findByPk(sugestaoCompraId, { transaction });
@@ -674,10 +687,10 @@ export const atualizarStatusCompra = async (req, res) => {
       return res.status(400).json({ error: "Status inválido" });
     }
 
-    if (status === "COMPRADO" && req.usuario?.role === "FUNCIONARIO_ESTOQUE") {
+    if (status === "COMPRADO" && !temAcao(req.usuario, "compras.gerarCusto")) {
       await transaction.rollback();
       return res.status(403).json({
-        error: "Estoque não pode dar uma compra como comprada (gera custo).",
+        error: "Você não tem acesso para dar uma compra como comprada (gera custo).",
       });
     }
 
@@ -907,13 +920,8 @@ export const conferirRecebimentoCompra = async (req, res) => {
 // recebimento gravou (o custoUnitario do produto volta pro custo anterior) e
 // devolve a compra pra "Comprado", pronta pra ser conferida de novo.
 // Bloqueia se parte do que entrou já saiu do estoque (não deixa ficar negativo).
+// Quem pode: definido na rota (padrão só Admin; pode ser dado por usuário).
 export const desfazerRecebimentoCompra = async (req, res) => {
-  if (!["ADMIN", "DESENVOLVEDOR"].includes(req.usuario?.role)) {
-    return res
-      .status(403)
-      .json({ error: "Só o Admin pode desfazer o recebimento de uma compra" });
-  }
-
   const transaction = await sequelize.transaction();
 
   try {

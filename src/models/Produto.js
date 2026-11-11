@@ -1,5 +1,6 @@
 import { DataTypes } from "sequelize";
 import { sequelize } from "../database/connection.js";
+import { normalizarNome } from "../utils/nomeCadastro.js";
 
 const Produto = sequelize.define(
   "Produto",
@@ -18,6 +19,10 @@ const Produto = sequelize.define(
     nome: {
       type: DataTypes.STRING(100),
       allowNull: false,
+      // Sempre em MAIÚSCULO (padrão de cadastro) — ver utils/nomeCadastro.js
+      set(valor) {
+        this.setDataValue("nome", normalizarNome(valor));
+      },
     },
     descricao: {
       type: DataTypes.TEXT,

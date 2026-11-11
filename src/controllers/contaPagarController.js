@@ -1,6 +1,7 @@
 import { Op } from "sequelize";
 import { sequelize } from "../database/connection.js";
 import { Compra, ContaPagar, Fornecedor, Usuario } from "../models/index.js";
+import { temAcao } from "../permissoes/acessos.js";
 
 const STATUS_VALIDOS = ["PENDENTE", "PAGA"];
 const MOEDAS_VALIDAS = ["BRL", "USD"];
@@ -105,9 +106,9 @@ export const criarContaAvulsa = async (req, res) => {
 };
 
 export const gerarParcelasDeCompra = async (req, res) => {
-  if (req.usuario?.role === "FUNCIONARIO_ESTOQUE") {
+  if (!temAcao(req.usuario, "compras.gerarCusto")) {
     return res.status(403).json({
-      error: "Estoque não pode gerar contas a pagar (custo).",
+      error: "Você não tem acesso para gerar contas a pagar (custo).",
     });
   }
 

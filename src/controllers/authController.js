@@ -1,5 +1,6 @@
 import jwt from "jsonwebtoken";
 import { Usuario, LogAtividade } from "../models/index.js";
+import { resumoDeAcessos } from "../permissoes/acessos.js";
 
 // US01 - Login
 export const login = async (req, res) => {
@@ -50,6 +51,7 @@ export const login = async (req, res) => {
         email: usuario.email,
         role: usuario.role,
         telefone: usuario.telefone,
+        acessos: resumoDeAcessos(usuario),
       },
     });
   } catch (error) {
@@ -124,7 +126,7 @@ export const perfil = async (req, res) => {
       attributes: { exclude: ["senha"] },
     });
 
-    res.json(usuario);
+    res.json({ ...usuario.toJSON(), acessos: resumoDeAcessos(usuario) });
   } catch (error) {
     console.error("Erro ao buscar perfil:", error);
     res.status(500).json({ error: "Erro ao buscar perfil" });

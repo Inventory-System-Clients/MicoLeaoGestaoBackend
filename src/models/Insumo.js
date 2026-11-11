@@ -1,5 +1,6 @@
 import { DataTypes } from "sequelize";
 import { sequelize } from "../database/connection.js";
+import { normalizarNome } from "../utils/nomeCadastro.js";
 
 const Insumo = sequelize.define(
   "Insumo",
@@ -12,6 +13,10 @@ const Insumo = sequelize.define(
     nome: {
       type: DataTypes.STRING(100),
       allowNull: false,
+      // Sempre em MAIÚSCULO (padrão de cadastro) — ver utils/nomeCadastro.js
+      set(valor) {
+        this.setDataValue("nome", normalizarNome(valor));
+      },
     },
     unidade: {
       type: DataTypes.STRING(20),

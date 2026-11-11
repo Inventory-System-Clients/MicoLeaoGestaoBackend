@@ -134,6 +134,22 @@ const startServer = async () => {
     console.log("✅ Database sincronizado!");
 
     const queryInterface = sequelize.getQueryInterface();
+
+    {
+      // Acessos personalizáveis por usuário (ver src/permissoes). Fica logo
+      // após o sync: as consultas de Usuario mais abaixo já leem essa coluna.
+      const { DataTypes } = await import("sequelize");
+      const colunasUsuarios = await queryInterface.describeTable("usuarios");
+      if (!colunasUsuarios.acessos_personalizados) {
+        await queryInterface.addColumn("usuarios", "acessos_personalizados", {
+          type: DataTypes.JSONB,
+          allowNull: false,
+          defaultValue: {},
+        });
+        console.log("✅ Coluna acessos_personalizados adicionada aos usuários!");
+      }
+    }
+
     await sequelize.query(`
       ALTER TYPE "enum_usuarios_role" ADD VALUE IF NOT EXISTS 'DESENVOLVEDOR';
     `);
@@ -143,6 +159,12 @@ const startServer = async () => {
     await sequelize.query(`
       ALTER TYPE "enum_usuarios_role" ADD VALUE IF NOT EXISTS 'FUNCIONARIO_CADASTRO';
     `);
+    // Perfis novos: começam sem acesso (ver permissoes/acessos.js)
+    for (const perfil of ["CONSULTOR_VENDAS", "MOTORISTA", "ABASTECEDOR"]) {
+      await sequelize.query(
+        `ALTER TYPE "enum_usuarios_role" ADD VALUE IF NOT EXISTS '${perfil}';`,
+      );
+    }
 
     {
       // Perfil "Funcionário de Fábrica" foi descontinuado: as tarefas de
@@ -688,6 +710,24 @@ const startServer = async () => {
           vigenteDesde: new Date("2000-01-01T00:00:00.000Z"),
         });
         console.log("✅ Cotação inicial do dólar (R$ 5,00) registrada!");
+      }
+    }
+
+    {
+      // Máquinas do projeto de loja: "origem" separa as reservadas à mão
+      // (RESERVA) das que estão na loja e são gravadas automaticamente (LOJA).
+      const { DataTypes } = await import("sequelize");
+      const colunasProjetoMaquinas = await queryInterface.describeTable(
+        "projeto_loja_maquinas",
+      );
+
+      if (!colunasProjetoMaquinas.origem) {
+        await queryInterface.addColumn("projeto_loja_maquinas", "origem", {
+          type: DataTypes.STRING(20),
+          allowNull: false,
+          defaultValue: "RESERVA",
+        });
+        console.log("✅ Coluna origem adicionada às máquinas do projeto de loja!");
       }
     }
 

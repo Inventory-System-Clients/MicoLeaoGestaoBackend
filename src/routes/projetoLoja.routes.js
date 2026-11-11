@@ -14,6 +14,7 @@ router.get("/", projetoLojaController.listar);
 router.get("/:id", projetoLojaController.obter);
 router.post("/", projetoLojaController.criar);
 router.put("/:id", projetoLojaController.atualizar);
+router.post("/:id/concluir", projetoLojaController.concluir);
 router.delete("/:id", projetoLojaController.excluir);
 
 export default router;

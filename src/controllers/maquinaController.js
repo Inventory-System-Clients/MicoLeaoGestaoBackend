@@ -6,6 +6,7 @@ import {
   Usuario,
 } from "../models/index.js";
 import { sequelize } from "../database/connection.js";
+import { sincronizarProjetosDaMaquina } from "../services/projetoLojaMaquinas.js";
 
 const normalizarLojaId = (lojaId) => (lojaId ? lojaId : null);
 
@@ -238,6 +239,11 @@ export const criarMaquina = async (req, res) => {
       auditoria: Boolean(auditoria),
     });
 
+    // Máquina já nasceu numa loja: registra nos projetos abertos dela
+    if (maquina.lojaId) {
+      await sincronizarProjetosDaMaquina(maquina.id, [maquina.lojaId]);
+    }
+
     res.locals.entityId = maquina.id;
     res.status(201).json(maquina);
   } catch (error) {
@@ -254,6 +260,7 @@ export const atualizarMaquina = async (req, res) => {
     if (!maquina) {
       return res.status(404).json({ error: "Máquina não encontrada" });
     }
+    const lojaIdAnterior = maquina.lojaId;
 
     const {
       codigo,
@@ -377,6 +384,11 @@ export const atualizarMaquina = async (req, res) => {
       auditoria: auditoria !== undefined ? Boolean(auditoria) : maquina.auditoria,
     });
 
+    // Trocou de loja pelo cadastro: registra nos projetos abertos
+    if (maquina.lojaId !== lojaIdAnterior) {
+      await sincronizarProjetosDaMaquina(maquina.id, [lojaIdAnterior, maquina.lojaId]);
+    }
+
     res.json(maquina);
   } catch (error) {
     console.error("Erro ao atualizar máquina:", error);
@@ -477,7 +489,7 @@ export const obterEstoqueAtual = async (req, res) => {
   }
 };
 
-// Transferir máquina para outra loja (ou para o galpão) sem criar um novo cadastro
+// Transferir máquina para outra loja (ou para o depósito) sem criar um novo cadastro
 export const transferirMaquina = async (req, res) => {
   const transaction = await sequelize.transaction();
 
@@ -519,14 +531,14 @@ export const transferirMaquina = async (req, res) => {
       return res.status(400).json({
         error: lojaDestinoNormalizada
           ? "A máquina já está nessa loja"
-          : "A máquina já está no galpão",
+          : "A máquina já está no depósito",
       });
     }
 
     const statusFinal = lojaDestinoNormalizada ? "EM_OPERACAO" : "PARADA";
     const motivoParadaFinal = lojaDestinoNormalizada
       ? null
-      : (observacao && observacao.trim()) || "Transferida para o galpão";
+      : (observacao && observacao.trim()) || "Transferida para o depósito";
 
     await maquina.update(
       {
@@ -550,6 +562,9 @@ export const transferirMaquina = async (req, res) => {
     );
 
     await transaction.commit();
+
+    // Registra a entrada/saída nos projetos abertos das duas lojas
+    await sincronizarProjetosDaMaquina(maquina.id, [lojaOrigemId, lojaDestinoNormalizada]);
 
     const maquinaAtualizada = await Maquina.findByPk(maquina.id, {
       include: [

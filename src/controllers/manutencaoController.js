@@ -13,7 +13,7 @@ import {
   Usuario,
 } from "../models/index.js";
 import { normalizarStatusOperacao } from "./maquinaController.js";
-import { isAdminOuDesenvolvedor } from "../middlewares/auth.js";
+import { temAcao } from "../permissoes/acessos.js";
 
 const STATUS_ABERTOS = ["ABERTA", "EM_ANDAMENTO", "AGUARDANDO_PECA"];
 const STATUS_VALIDOS = [...STATUS_ABERTOS, "CONCLUIDA"];
@@ -84,7 +84,7 @@ const includeAdmin = [
 // Mesmo critério usado para atualizar status: admin/dev, o responsável ou
 // quem está na lista de funcionários permitidos da manutenção.
 const usuarioPodeAgirNaManutencao = (manutencao, usuario) =>
-  ["ADMIN", "DESENVOLVEDOR", "FUNCIONARIO_CADASTRO"].includes(usuario.role) ||
+  temAcao(usuario, "manutencao.gerenciarTodas") ||
   manutencao.responsavelId === usuario.id ||
   (manutencao.funcionariosPermitidos || []).some(
     (permitido) => permitido.id === usuario.id,
@@ -440,10 +440,10 @@ export const criarManutencao = async (req, res) => {
     // Só ADMIN pode informar custo na manutenção — é o que gera o gasto
     // variável automático, e isso fica restrito a quem tem acesso a
     // financeiro (FUNCIONARIO_CADASTRO cria manutenção, mas não financeiro).
-    if (custoInformado && custoNumerico > 0 && !isAdminOuDesenvolvedor(req.usuario.role)) {
+    if (custoInformado && custoNumerico > 0 && !temAcao(req.usuario, "manutencao.lancarCusto")) {
       await transaction.rollback();
       return res.status(403).json({
-        error: "Só o administrador pode informar custo na manutenção.",
+        error: "Você não tem acesso para informar custo na manutenção.",
       });
     }
 
@@ -594,7 +594,7 @@ export const listarManutencoes = async (req, res) => {
     let include = [...includeAdmin];
     const where = {};
 
-    if (!["ADMIN", "DESENVOLVEDOR", "FUNCIONARIO_CADASTRO"].includes(req.usuario.role)) {
+    if (!temAcao(req.usuario, "manutencao.gerenciarTodas")) {
       where.status = { [Op.ne]: "CONCLUIDA" };
       where[Op.or] = [
         { responsavelId: req.usuario.id },
@@ -858,9 +858,7 @@ export const registrarUsoPecaManutencao = async (req, res) => {
     const funcionarioAlvo = funcionarioId || req.usuario.id;
     if (
       funcionarioAlvo !== req.usuario.id &&
-      !["ADMIN", "DESENVOLVEDOR", "FUNCIONARIO_CADASTRO"].includes(
-        req.usuario.role,
-      )
+      !temAcao(req.usuario, "manutencao.registrarPorOutro")
     ) {
       await transaction.rollback();
       return res.status(403).json({
@@ -977,9 +975,7 @@ export const registrarPecaQuebradaManutencao = async (req, res) => {
     const funcionarioAlvo = funcionarioId || req.usuario.id;
     if (
       funcionarioAlvo !== req.usuario.id &&
-      !["ADMIN", "DESENVOLVEDOR", "FUNCIONARIO_CADASTRO"].includes(
-        req.usuario.role,
-      )
+      !temAcao(req.usuario, "manutencao.registrarPorOutro")
     ) {
       await transaction.rollback();
       return res.status(403).json({

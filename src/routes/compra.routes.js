@@ -33,8 +33,10 @@ router.patch(
   registrarLog("CONFERIR_RECEBIMENTO_COMPRA", "Compra"),
   conferirRecebimentoCompra,
 );
+// Padrão só Admin (dá pra liberar por usuário em Acessos)
 router.patch(
   "/:id/desfazer-recebimento",
+  autorizarRole("ADMIN"),
   registrarLog("DESFAZER_RECEBIMENTO_COMPRA", "Compra"),
   desfazerRecebimentoCompra,
 );

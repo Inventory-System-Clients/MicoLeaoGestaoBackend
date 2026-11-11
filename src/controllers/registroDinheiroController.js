@@ -15,6 +15,7 @@ import {
   buscarHistoricoCustoProduto,
   custoUnitarioNaData,
 } from "../services/custoProdutoService.js";
+import { limitesDe, restringirPeriodo } from "../permissoes/limites.js";
 
 const inicioDoDia = (data) =>
   new Date(data.getFullYear(), data.getMonth(), data.getDate(), 0, 0, 0, 0);
@@ -522,6 +523,11 @@ const registroDinheiroController = {
           where.fim[Op.lte] = new Date(`${dataFim}T23:59:59.999-03:00`);
         }
       }
+
+      // Limites de acesso do usuário (ver permissoes/catalogo.js)
+      const limites = limitesDe(req, "dinheiro.ver");
+      if (limites.somenteProprios) where.contadoPorId = req.usuario.id;
+      if (limites.dias) where.fim = restringirPeriodo(where.fim, Op, limites.dias);
 
       const registros = await RegistroDinheiro.findAll({
         where,

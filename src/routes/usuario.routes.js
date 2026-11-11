@@ -6,6 +6,7 @@ import {
   atualizarUsuario,
   deletarUsuario,
   reativarUsuario,
+  atualizarAcessosUsuario,
 } from "../controllers/usuarioController.js";
 import {
   autenticar,
@@ -48,6 +49,13 @@ router.patch(
   autorizarRole("ADMIN"),
   registrarLog("REATIVAR_USUARIO", "Usuario"),
   reativarUsuario
+);
+// Ajustes de acesso do usuário (dar/tirar ações do padrão do perfil)
+router.put(
+  "/:id/acessos",
+  autorizarRole("ADMIN"),
+  registrarLog("EDITAR_ACESSOS_USUARIO", "Usuario"),
+  atualizarAcessosUsuario,
 );
 
 export default router;

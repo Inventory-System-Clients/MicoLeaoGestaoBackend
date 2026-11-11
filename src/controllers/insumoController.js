@@ -1,5 +1,11 @@
 import { sequelize } from "../database/connection.js";
 import { Fornecedor, Insumo, InsumoCompra, Usuario } from "../models/index.js";
+import {
+  buscarNomeRepetido,
+  chaveNome,
+  mensagemNomeRepetido,
+} from "../utils/nomeCadastro.js";
+import { temAcao } from "../permissoes/acessos.js";
 
 // Funcionário de estoque não pode ver custo/preço de insumo, mesma regra
 // já aplicada às compras (compraController.js).
@@ -30,7 +36,7 @@ export const listarInsumos = async (req, res) => {
     });
 
     res.json(
-      req.usuario?.role === "FUNCIONARIO_ESTOQUE"
+      !temAcao(req.usuario, "compras.verValores")
         ? insumos.map(mascararValoresInsumo)
         : insumos,
     );
@@ -49,6 +55,13 @@ export const criarInsumo = async (req, res) => {
       return res.status(400).json({ error: "Nome do insumo é obrigatório" });
     }
 
+    const nomeRepetido = await buscarNomeRepetido(Insumo, nome);
+    if (nomeRepetido) {
+      return res
+        .status(400)
+        .json({ error: mensagemNomeRepetido("um insumo", nomeRepetido) });
+    }
+
     const insumo = await Insumo.create({
       nome: nome.trim(),
       unidade: unidade || null,
@@ -61,7 +74,7 @@ export const criarInsumo = async (req, res) => {
     res
       .status(201)
       .json(
-        req.usuario?.role === "FUNCIONARIO_ESTOQUE"
+        !temAcao(req.usuario, "compras.verValores")
           ? mascararValoresInsumo(insumo)
           : insumo,
       );
@@ -89,6 +102,23 @@ export const atualizarInsumo = async (req, res) => {
       ativo,
     } = req.body;
 
+    if (nome !== undefined) {
+      if (!nome || !nome.trim()) {
+        return res.status(400).json({ error: "Nome do insumo é obrigatório" });
+      }
+      // Só checa se o nome mudou de fato: duplicados antigos continuam editáveis
+      if (chaveNome(nome) !== chaveNome(insumo.nome)) {
+        const nomeRepetido = await buscarNomeRepetido(Insumo, nome, {
+          ignorarId: insumo.id,
+        });
+        if (nomeRepetido) {
+          return res
+            .status(400)
+            .json({ error: mensagemNomeRepetido("um insumo", nomeRepetido) });
+        }
+      }
+    }
+
     await insumo.update({
       nome: nome !== undefined ? nome.trim() : insumo.nome,
       unidade: unidade ?? insumo.unidade,
@@ -101,7 +131,7 @@ export const atualizarInsumo = async (req, res) => {
 
     res.locals.entityId = insumo.id;
     res.json(
-      req.usuario?.role === "FUNCIONARIO_ESTOQUE"
+      !temAcao(req.usuario, "compras.verValores")
         ? mascararValoresInsumo(insumo)
         : insumo,
     );
@@ -161,7 +191,7 @@ export const listarComprasInsumo = async (req, res) => {
     });
 
     res.json(
-      req.usuario?.role === "FUNCIONARIO_ESTOQUE"
+      !temAcao(req.usuario, "compras.verValores")
         ? compras.map(mascararValoresInsumoCompra)
         : compras,
     );
@@ -257,7 +287,7 @@ export const criarCompraInsumo = async (req, res) => {
     res
       .status(201)
       .json(
-        req.usuario?.role === "FUNCIONARIO_ESTOQUE"
+        !temAcao(req.usuario, "compras.verValores")
           ? mascararValoresInsumoCompra(compraCompleta)
           : compraCompleta,
       );

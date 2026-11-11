@@ -8,7 +8,10 @@
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
     "migrate": "node src/database/migrate.js",
-    "seed": "node src/database/seed.js"
+    "seed": "node src/database/seed.js",
+    "verificar:permissoes": "node --env-file-if-exists=.env.teste scripts/verificarPermissoes.js",
+    "dev:teste": "nodemon --exec \"node --env-file=.env.teste\" src/server.js",
+    "seed:teste": "node --env-file=.env.teste src/database/seed-admin.js && node --env-file=.env.teste src/database/seed-teste.js"
   },
   "keywords": [
     "estoque",

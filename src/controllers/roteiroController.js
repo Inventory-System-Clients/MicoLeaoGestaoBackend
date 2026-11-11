@@ -7,6 +7,7 @@ import {
   Usuario,
   Veiculo,
 } from "../models/index.js";
+import { temAcao } from "../permissoes/acessos.js";
 
 const includeRoteiro = [
   {
@@ -44,7 +45,7 @@ const obterRoteiroCompleto = async (id) => {
 };
 
 const usuarioPodeAcessar = (req, roteiro) =>
-  ["ADMIN", "DESENVOLVEDOR", "FUNCIONARIO_CADASTRO"].includes(req.usuario.role) ||
+  temAcao(req.usuario, "roteiros.verTodos") ||
   String(roteiro.usuarioId) === String(req.usuario.id);
 
 const normalizarDiasSemana = (todosDias, diasSemana) => {
@@ -112,7 +113,7 @@ export const listarRoteiros = async (req, res) => {
     await aplicarResetSeNecessario();
 
     const where =
-      ["ADMIN", "DESENVOLVEDOR", "FUNCIONARIO_CADASTRO"].includes(req.usuario.role)
+      temAcao(req.usuario, "roteiros.verTodos")
         ? {}
         : { usuarioId: req.usuario.id, ativo: true };
 

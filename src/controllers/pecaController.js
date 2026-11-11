@@ -5,6 +5,11 @@ import {
   Peca,
   Usuario,
 } from "../models/index.js";
+import {
+  buscarNomeRepetido,
+  chaveNome,
+  mensagemNomeRepetido,
+} from "../utils/nomeCadastro.js";
 
 export const listarPecas = async (req, res) => {
   try {
@@ -41,6 +46,13 @@ export const criarPeca = async (req, res) => {
 
     if (!nome || !nome.trim()) {
       return res.status(400).json({ error: "Nome da peça é obrigatório" });
+    }
+
+    const nomeRepetido = await buscarNomeRepetido(Peca, nome);
+    if (nomeRepetido) {
+      return res
+        .status(400)
+        .json({ error: mensagemNomeRepetido("uma peça", nomeRepetido) });
     }
 
     if (codigo) {
@@ -86,6 +98,23 @@ export const atualizarPeca = async (req, res) => {
       custoUnitario,
       ativo,
     } = req.body;
+
+    if (nome !== undefined) {
+      if (!nome || !nome.trim()) {
+        return res.status(400).json({ error: "Nome da peça é obrigatório" });
+      }
+      // Só checa se o nome mudou de fato: duplicados antigos continuam editáveis
+      if (chaveNome(nome) !== chaveNome(peca.nome)) {
+        const nomeRepetido = await buscarNomeRepetido(Peca, nome, {
+          ignorarId: peca.id,
+        });
+        if (nomeRepetido) {
+          return res
+            .status(400)
+            .json({ error: mensagemNomeRepetido("uma peça", nomeRepetido) });
+        }
+      }
+    }
 
     if (codigo && codigo !== peca.codigo) {
       const existente = await Peca.findOne({ where: { codigo } });

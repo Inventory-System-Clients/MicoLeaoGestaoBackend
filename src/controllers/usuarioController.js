@@ -1,5 +1,12 @@
 import { Usuario, UsuarioLoja, Loja } from "../models/index.js";
 import { Op } from "sequelize";
+import {
+  ehPerfilAcessoTotal,
+  normalizarAjustes,
+} from "../permissoes/acessos.js";
+
+// Mesma lista do ENUM do model (fonte única)
+const ROLES_VALIDAS = Usuario.getAttributes().role.values;
 
 const permissoesPadraoFuncionario = {
   visualizar: true,
@@ -124,17 +131,10 @@ export const criarUsuario = async (req, res) => {
     }
 
     // Validar role
-    const roleValida = [
-      "ADMIN",
-      "FUNCIONARIO",
-      "DESENVOLVEDOR",
-      "FUNCIONARIO_ESTOQUE",
-      "FUNCIONARIO_CADASTRO",
-    ].includes(role);
+    const roleValida = ROLES_VALIDAS.includes(role);
     if (!roleValida) {
       return res.status(400).json({
-        error:
-          "Role invalida. Use ADMIN, FUNCIONARIO, DESENVOLVEDOR, FUNCIONARIO_ESTOQUE ou FUNCIONARIO_CADASTRO",
+        error: `Role invalida. Use ${ROLES_VALIDAS.join(", ")}`,
       });
     }
 
@@ -198,19 +198,9 @@ export const atualizarUsuario = async (req, res) => {
     }
 
     // Validar role se fornecida
-    if (
-      role &&
-      ![
-        "ADMIN",
-        "FUNCIONARIO",
-        "DESENVOLVEDOR",
-        "FUNCIONARIO_ESTOQUE",
-        "FUNCIONARIO_CADASTRO",
-      ].includes(role)
-    ) {
+    if (role && !ROLES_VALIDAS.includes(role)) {
       return res.status(400).json({
-        error:
-          "Role invalida. Use ADMIN, FUNCIONARIO, DESENVOLVEDOR, FUNCIONARIO_ESTOQUE ou FUNCIONARIO_CADASTRO",
+        error: `Role invalida. Use ${ROLES_VALIDAS.join(", ")}`,
       });
     }
 
@@ -318,5 +308,32 @@ export const reativarUsuario = async (req, res) => {
   } catch (error) {
     console.error("Erro ao reativar usuário:", error);
     res.status(500).json({ error: "Erro ao reativar usuário" });
+  }
+};
+
+// Ajustes de acesso: { adicionadas: [chaves], removidas: [chaves] } sobre o
+// padrão do perfil. Admin e Desenvolvedor têm acesso total e não usam ajustes.
+export const atualizarAcessosUsuario = async (req, res) => {
+  try {
+    const usuario = await Usuario.findByPk(req.params.id);
+    if (!usuario) {
+      return res.status(404).json({ error: "Usuário não encontrado" });
+    }
+    if (ehPerfilAcessoTotal(usuario.role)) {
+      return res.status(400).json({
+        error: "Administrador e Desenvolvedor já têm acesso total.",
+      });
+    }
+
+    const ajustes = normalizarAjustes(req.body || {});
+    await usuario.update({ acessosPersonalizados: ajustes });
+
+    res.json({ id: usuario.id, acessosPersonalizados: ajustes });
+  } catch (error) {
+    if (error.status === 400) {
+      return res.status(400).json({ error: error.message });
+    }
+    console.error("Erro ao atualizar acessos do usuário:", error);
+    res.status(500).json({ error: "Erro ao atualizar acessos do usuário" });
   }
 };

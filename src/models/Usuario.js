@@ -33,6 +33,9 @@ const Usuario = sequelize.define(
         "DESENVOLVEDOR",
         "FUNCIONARIO_ESTOQUE",
         "FUNCIONARIO_CADASTRO",
+        "CONSULTOR_VENDAS",
+        "MOTORISTA",
+        "ABASTECEDOR",
       ),
       allowNull: false,
       defaultValue: "FUNCIONARIO",
@@ -44,6 +47,14 @@ const Usuario = sequelize.define(
     ativo: {
       type: DataTypes.BOOLEAN,
       defaultValue: true,
+    },
+    acessosPersonalizados: {
+      type: DataTypes.JSONB,
+      allowNull: false,
+      defaultValue: {},
+      field: "acessos_personalizados",
+      comment:
+        "Ajustes de acesso do usuário sobre o padrão do perfil: { adicionadas: [chaves], removidas: [chaves] } (ver src/permissoes)",
     },
   },
   {

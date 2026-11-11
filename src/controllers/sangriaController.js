@@ -1,5 +1,11 @@
 import { Op } from "sequelize";
 import { Sangria, Loja, Usuario } from "../models/index.js";
+import { temAcao } from "../permissoes/acessos.js";
+import {
+  limitesDe,
+  restringirPeriodo,
+  ehDeHojeEmBrasilia,
+} from "../permissoes/limites.js";
 
 const normalizarInteiroNaoNegativo = (valor) => {
   const numero = Number(valor ?? 0);
@@ -25,6 +31,18 @@ const calcularValorPelasNotas = (notas) => {
       notas.notas200 * 200
     ).toFixed(2),
   );
+};
+
+// Motivo pra recusar a exclusão pelo limite do usuário (null = pode excluir)
+const foraDoLimiteDeExclusao = (sangria, req, limites) => {
+  if (limites.somenteProprias && sangria.usuarioId !== req.usuario.id) {
+    return "Você só pode excluir sangrias que você mesmo registrou.";
+  }
+  // O model de Sangria chama o timestamp de criação de "created_at"
+  if (limites.somenteMesmoDia && !ehDeHojeEmBrasilia(sangria.created_at)) {
+    return "Você só pode excluir sangrias no mesmo dia em que foram registradas.";
+  }
+  return null;
 };
 
 const sangriaController = {
@@ -76,7 +94,11 @@ const sangriaController = {
       const registro = await Sangria.create({
         lojaId,
         usuarioId: req.usuario?.id || null,
-        dataContagem: dataContagem ? new Date(dataContagem) : new Date(),
+        // Só quem tem "escolher data/hora" (padrão: Admin) define a data
+        dataContagem:
+          dataContagem && temAcao(req.usuario, "sangrias.definirDataHora")
+            ? new Date(dataContagem)
+            : new Date(),
         quantidade: quantidadeNormalizada,
         ...notas,
         valorCalculadoNotas,
@@ -129,6 +151,13 @@ const sangriaController = {
         where.observacao = { [Op.iLike]: `%${observacao}%` };
       }
 
+      // Limites de acesso do usuário (ver permissoes/catalogo.js)
+      const limites = limitesDe(req, "sangrias.ver");
+      if (limites.somenteProprias) where.usuarioId = req.usuario.id;
+      if (limites.dias) {
+        where.dataContagem = restringirPeriodo(where.dataContagem, Op, limites.dias);
+      }
+
       const registros = await Sangria.findAll({
         where,
         include: [
@@ -153,11 +182,19 @@ const sangriaController = {
         return res.status(400).json({ error: "id é obrigatório." });
       }
 
-      const excluidas = await Sangria.destroy({ where: { id } });
-
-      if (!excluidas) {
+      const sangria = await Sangria.findByPk(id);
+      if (!sangria) {
         return res.status(404).json({ error: "Sangria não encontrada." });
       }
+
+      const motivo = foraDoLimiteDeExclusao(
+        sangria,
+        req,
+        limitesDe(req, "sangrias.excluir"),
+      );
+      if (motivo) return res.status(403).json({ error: motivo });
+
+      await sangria.destroy();
 
       return res.json({ success: true, id });
     } catch (error) {
@@ -184,6 +221,23 @@ const sangriaController = {
         return res.status(400).json({
           error: "Nenhum id válido informado para exclusão.",
         });
+      }
+
+      // Com limite de exclusão, confere uma a uma antes de apagar qualquer
+      // coisa: se alguma estiver fora do limite, não apaga nenhuma.
+      const limites = limitesDe(req, "sangrias.excluirEmLote");
+      if (Object.keys(limites).length > 0) {
+        const sangrias = await Sangria.findAll({
+          where: { id: { [Op.in]: idsValidos } },
+        });
+        const bloqueadas = sangrias.filter((sangria) =>
+          foraDoLimiteDeExclusao(sangria, req, limites),
+        );
+        if (bloqueadas.length > 0) {
+          return res.status(403).json({
+            error: `${bloqueadas.length} das sangrias selecionadas estão fora do seu limite de exclusão. Nenhuma foi excluída.`,
+          });
+        }
       }
 
       const excluidas = await Sangria.destroy({

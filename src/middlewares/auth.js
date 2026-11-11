@@ -1,6 +1,7 @@
 import jwt from "jsonwebtoken";
 import { Usuario } from "../models/index.js";
 import LogAtividade from "../models/LogAtividade.js";
+import { decidirAcesso } from "../permissoes/acessos.js";
 
 export const isAdminOuDesenvolvedor = (role) =>
   role === "ADMIN" || role === "DESENVOLVEDOR";
@@ -32,7 +33,18 @@ export const autenticar = async (req, res, next) => {
         .json({ error: "Usuário não encontrado ou inativo" });
     }
 
+    // Acessos personalizáveis (permissoes/): ação tirada do usuário bloqueia,
+    // ação dada a mais libera mesmo onde o perfil não deixaria. Perfis novos
+    // (Consultor, Motorista, Abastecedor) só usam o que está liberado.
+    const decisao = decidirAcesso(usuario, req.method, req.originalUrl);
+    if (decisao === "NEGAR") {
+      return res.status(403).json({
+        error: "Você não tem acesso a esta área. Fale com o administrador.",
+      });
+    }
+
     req.usuario = usuario;
+    req.acessoLiberadoPorPermissao = decisao === "LIBERAR";
     next();
   } catch (error) {
     return res.status(401).json({ error: "Token inválido ou expirado" });
@@ -41,8 +53,9 @@ export const autenticar = async (req, res, next) => {
 
 // US02 - Middleware de Autorização por Role
 export const autorizarRole = (...rolesPermitidas) => {
-  return (req, res, next) => {
+  const middleware = (req, res, next) => {
     const permitido =
+      req.acessoLiberadoPorPermissao ||
       rolesPermitidas.includes(req.usuario.role) ||
       (req.usuario.role === "DESENVOLVEDOR" && rolesPermitidas.includes("ADMIN"));
     if (!permitido) {
@@ -52,6 +65,11 @@ export const autorizarRole = (...rolesPermitidas) => {
     }
     next();
   };
+  // Lido pelo script de permissões (quem acessa cada rota hoje)
+  middleware.rolesPermitidas = rolesPermitidas.includes("ADMIN")
+    ? [...new Set([...rolesPermitidas, "DESENVOLVEDOR"])]
+    : rolesPermitidas;
+  return middleware;
 };
 
 // US03 - Middleware de autorização ADMIN
@@ -61,6 +79,7 @@ export const requireAdmin = (req, res, next) => {
       .status(401)
       .json({ error: "Usuário não autenticado ou token inválido" });
   }
+  if (req.acessoLiberadoPorPermissao) return next();
   if (!isAdminOuDesenvolvedor(req.usuario.role)) {
     return res
       .status(403)
@@ -79,6 +98,7 @@ export const requireAdminOuCadastro = (req, res, next) => {
       .status(401)
       .json({ error: "Usuário não autenticado ou token inválido" });
   }
+  if (req.acessoLiberadoPorPermissao) return next();
   if (!isAdminDesenvolvedorOuCadastro(req.usuario.role)) {
     return res
       .status(403)
@@ -96,6 +116,7 @@ export const requireAdminCadastroOuEstoque = (req, res, next) => {
       .status(401)
       .json({ error: "Usuário não autenticado ou token inválido" });
   }
+  if (req.acessoLiberadoPorPermissao) return next();
   if (
     !isAdminDesenvolvedorOuCadastro(req.usuario.role) &&
     req.usuario.role !== "FUNCIONARIO_ESTOQUE"
@@ -230,3 +251,17 @@ export const registrarLog = (acao, entidade = null) => {
 
 // Alias para verificar se é ADMIN (convenção)
 export const verificarAdmin = autorizarRole("ADMIN");
+
+// Quem cada middleware de perfil deixa passar (lido pelo script de permissões)
+requireAdmin.rolesPermitidas = ["ADMIN", "DESENVOLVEDOR"];
+requireAdminOuCadastro.rolesPermitidas = [
+  "ADMIN",
+  "DESENVOLVEDOR",
+  "FUNCIONARIO_CADASTRO",
+];
+requireAdminCadastroOuEstoque.rolesPermitidas = [
+  "ADMIN",
+  "DESENVOLVEDOR",
+  "FUNCIONARIO_CADASTRO",
+  "FUNCIONARIO_ESTOQUE",
+];

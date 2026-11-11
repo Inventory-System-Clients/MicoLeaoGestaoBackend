@@ -57,6 +57,13 @@ const ProjetoLojaMaquina = sequelize.define(
       type: DataTypes.TEXT,
       allowNull: true,
     },
+    origem: {
+      type: DataTypes.STRING(20),
+      allowNull: false,
+      defaultValue: "RESERVA",
+      comment:
+        "RESERVA = adicionada à mão (do depósito ou a comprar) | LOJA = máquina que está na loja do projeto, gravada e atualizada automaticamente até concluir",
+    },
   },
   {
     tableName: "projeto_loja_maquinas",
