@@ -8,6 +8,7 @@ import {
   obterEstoqueAtual,
   transferirMaquina,
   listarTransferenciasMaquina,
+  ajustarQuantidade,
 } from "../controllers/maquinaController.js";
 import { produtoSugeridoPorMaquina } from "../controllers/produtoSugeridoController.js";
 import {
@@ -45,6 +46,14 @@ router.put(
   autorizarRole("ADMIN", "FUNCIONARIO_CADASTRO"),
   registrarLog("EDITAR_MAQUINA", "Maquina"),
   atualizarMaquina,
+);
+// Ajuste rápido de capacidade padrão / quantidade atual (Visão de Máquinas)
+router.patch(
+  "/:id/quantidade",
+  autenticar,
+  autorizarRole("ADMIN", "FUNCIONARIO_CADASTRO"),
+  registrarLog("AJUSTAR_QUANTIDADE_MAQUINA", "Maquina"),
+  ajustarQuantidade,
 );
 router.delete(
   "/:id",

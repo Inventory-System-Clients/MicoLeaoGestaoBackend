@@ -605,3 +605,73 @@ export const listarTransferenciasMaquina = async (req, res) => {
     res.status(500).json({ error: "Erro ao listar transferências da máquina" });
   }
 };
+
+// Ajuste rápido pela Visão de Máquinas: capacidade padrão e/ou quantidade de
+// pelúcias que está na máquina agora. A quantidade fica na última
+// movimentação (totalPos), então o ajuste entra como uma movimentação
+// "Ajuste" (sem saída, sem abastecimento, sem fichas), que mantém os
+// contadores IN/OUT e as fichas não recolhidas da anterior.
+export const ajustarQuantidade = async (req, res) => {
+  try {
+    const maquina = await Maquina.findByPk(req.params.id);
+    if (!maquina) return res.status(404).json({ error: "Máquina não encontrada" });
+
+    const inteiroOuNulo = (valor) =>
+      valor === undefined || valor === null || valor === "" ? null : Math.floor(Number(valor));
+    const capacidade = inteiroOuNulo(req.body.capacidadePadrao);
+    const quantidade = inteiroOuNulo(req.body.quantidadeAtual);
+    if (capacidade !== null && (!Number.isFinite(capacidade) || capacidade < 1)) {
+      return res.status(400).json({ error: "A capacidade padrão precisa ser pelo menos 1." });
+    }
+    if (quantidade !== null && (!Number.isFinite(quantidade) || quantidade < 0)) {
+      return res.status(400).json({ error: "A quantidade não pode ser negativa." });
+    }
+
+    const resultado = await sequelize.transaction(async (transaction) => {
+      if (capacidade !== null && capacidade !== Number(maquina.capacidadePadrao)) {
+        await maquina.update({ capacidadePadrao: capacidade }, { transaction });
+      }
+      const ultima = await Movimentacao.findOne({
+        where: { maquinaId: maquina.id },
+        order: [["dataColeta", "DESC"]],
+        transaction,
+      });
+      const atual = ultima ? Number(ultima.totalPos) || 0 : 0;
+      let ajuste = null;
+      if (quantidade !== null && quantidade !== atual) {
+        const naoRecolhida = ultima?.checklist?.recolhimentoFichas === false;
+        ajuste = await Movimentacao.create(
+          {
+            maquinaId: maquina.id,
+            usuarioId: req.usuario.id,
+            dataColeta: new Date(),
+            totalPre: atual,
+            sairam: 0,
+            abastecidas: 0,
+            totalPos: quantidade,
+            fichas: 0,
+            contadorIn: ultima?.contadorIn ?? null,
+            contadorOut: ultima?.contadorOut ?? null,
+            valorFaturado: 0,
+            tipoOcorrencia: "Ajuste",
+            observacoes: `Ajuste de quantidade pela Visão de Máquinas: ${atual} → ${quantidade}`,
+            // Não zera as fichas que ficaram sem recolher
+            checklist: naoRecolhida ? { ajuste: true, recolhimentoFichas: false } : { ajuste: true },
+          },
+          { transaction },
+        );
+      }
+      return { anterior: atual, ajuste };
+    });
+
+    res.json({
+      capacidadePadrao: Number(maquina.capacidadePadrao),
+      quantidadeAnterior: resultado.anterior,
+      quantidadeAtual: resultado.ajuste ? Number(resultado.ajuste.totalPos) : resultado.anterior,
+      ajusteId: resultado.ajuste?.id || null,
+    });
+  } catch (error) {
+    console.error("Erro ao ajustar quantidade da máquina:", error);
+    res.status(500).json({ error: "Erro ao ajustar a quantidade" });
+  }
+};

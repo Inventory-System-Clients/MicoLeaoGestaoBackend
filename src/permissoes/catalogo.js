@@ -160,7 +160,7 @@ export const CATALOGO = [
       {
         chave: "maquinas.editar",
         nome: "Editar máquina",
-        rotas: ["PUT /api/maquinas/:id"],
+        rotas: ["PUT /api/maquinas/:id", "PATCH /api/maquinas/:id/quantidade"],
         telas: ["/maquinas/:id/editar"],
         requer: ["maquinas.ver"],
       },
