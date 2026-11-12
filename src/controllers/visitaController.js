@@ -17,7 +17,27 @@ import { registrarMovimentacao } from "./movimentacaoController.js";
 // limpeza do piso e conferência final (portas, cadeados, chaves).
 // Só nas lojas escolhidas no cadastro do usuário (ou todas, com lojas.todas).
 
-const PASSOS_OBRIGATORIOS = ["limpezaVidro", "recolhimentoFichas", "limpezaPiso", "portas", "cadeados", "chaves"];
+const PASSOS_OBRIGATORIOS = ["limpezaVidro", "limpezaPiso", "portas", "cadeados", "chaves"];
+
+// Fichas que ficaram na máquina sem recolher: soma das movimentações mais
+// recentes marcadas como "não recolhidas", até a última que recolheu.
+// Movimentação antiga (sem checklist, do roteiro) conta como recolhida.
+const fichasPendentes = async (maquinaId) => {
+  const recentes = await Movimentacao.findAll({
+    where: { maquinaId },
+    order: [["dataColeta", "DESC"]],
+    attributes: ["fichas", "checklist"],
+    limit: 60,
+  });
+  let total = 0;
+  let movimentacoes = 0;
+  for (const mov of recentes) {
+    if (mov.checklist?.recolhimentoFichas !== false) break;
+    total += Number(mov.fichas) || 0;
+    movimentacoes += 1;
+  }
+  return { total, movimentacoes };
+};
 const inicioDeHojeEmBrasilia = () =>
   new Date(`${new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString().slice(0, 10)}T00:00:00.000-03:00`);
 
@@ -127,6 +147,7 @@ const visitaController = {
         maquina,
         ultima,
         produtoSugeridoId,
+        fichasPendentes: await fichasPendentes(maquina.id),
         estoque: lista.sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR")),
       });
     } catch (error) {
@@ -152,7 +173,17 @@ const visitaController = {
       if (faltando.length) {
         return res.status(400).json({ error: "Complete todos os passos do checklist antes de salvar.", faltando });
       }
-      req.body.checklist = Object.fromEntries(PASSOS_OBRIGATORIOS.map((passo) => [passo, true]));
+      // Recolhimento de fichas é opcional: se recolheu, leva as do dia e as
+      // que ficaram de movimentações anteriores sem recolher
+      const recolheu = checklist.recolhimentoFichas === true;
+      const pendentes = await fichasPendentes(maquina.id);
+      const fichasDoDia = Math.max(0, Math.floor(Number(req.body.fichas) || 0));
+      req.body.checklist = {
+        ...Object.fromEntries(PASSOS_OBRIGATORIOS.map((passo) => [passo, true])),
+        recolhimentoFichas: recolheu,
+        fichasPendentesAntes: pendentes.total,
+        fichasRecolhidas: recolheu ? pendentes.total + fichasDoDia : 0,
+      };
       return registrarMovimentacao(req, res, next);
     } catch (error) {
       console.error("Erro ao registrar movimentação em passos:", error);
