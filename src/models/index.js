@@ -608,6 +608,9 @@ Envio.belongsTo(Transportador, {
   foreignKey: "transportadorId",
   as: "transportador",
 });
+Roteiro.hasMany(Envio, { foreignKey: "roteiroId", as: "envios" });
+Envio.belongsTo(Roteiro, { foreignKey: "roteiroId", as: "roteiro" });
+Roteiro.belongsTo(Usuario, { foreignKey: "criadoPorId", as: "criadoPor" });
 Envio.belongsTo(Usuario, {
   foreignKey: "despachadoPorId",
   as: "despachadoPor",

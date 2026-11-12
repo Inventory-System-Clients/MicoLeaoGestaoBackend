@@ -26,9 +26,15 @@ const Envio = sequelize.define(
       },
       comment: "Quem separou/montou o envio no depósito",
     },
+    // Quem leva: um transportador (nome) ou uma rota do nosso motorista
+    roteiroId: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      references: { model: "roteiros", key: "id" },
+    },
     transportadorId: {
       type: DataTypes.UUID,
-      allowNull: false,
+      allowNull: true,
       references: {
         model: "transportadores",
         key: "id",

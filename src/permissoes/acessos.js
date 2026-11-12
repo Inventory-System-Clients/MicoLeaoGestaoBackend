@@ -21,11 +21,26 @@ const MANUTENCAO_BASICA = [
 
 export const PADRAO_PERFIS_RESTRITOS = {
   CONSULTOR_VENDAS: ["ponto.bater", "metas.minhas", "visitas.registrar", ...MANUTENCAO_BASICA],
-  MOTORISTA: ["ponto.bater", "metas.minhas", ...MANUTENCAO_BASICA],
+  // Faz as rotas dele: inicia, entrega nas paradas e finaliza devolvendo o veículo
+  MOTORISTA: ["ponto.bater", "metas.minhas", "roteiros.ver", "roteiros.executar", ...MANUTENCAO_BASICA],
   // Mesmo trabalho do Consultor (ponto + movimentação nas lojas dele), sem metas
   ABASTECEDOR: ["ponto.bater", "visitas.registrar", ...MANUTENCAO_BASICA],
   // Começa só com as metas por loja; os outros acessos vêm depois
   FINANCEIRO: ["ponto.bater", "metas.minhas", "metas.gerenciar", ...MANUTENCAO_BASICA],
+  // Cria e acompanha as rotas, vê os envios e acompanha as metas por loja
+  GERENTE_VENDAS: [
+    "ponto.bater",
+    ...MANUTENCAO_BASICA,
+    "roteiros.ver",
+    "roteiros.verTodos",
+    "roteiros.criar",
+    "roteiros.editar",
+    "roteiros.excluir",
+    "roteiros.editarItens",
+    "envios.ver",
+    "metas.gerenciar",
+    "metas.minhas",
+  ],
 };
 
 // Limites que já vêm para todos, menos Admin e Desenvolvedor. No usuário dá

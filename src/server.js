@@ -7,6 +7,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { sequelize } from "./database/connection.js";
 import routes from "./routes/index.js";
+import { agendarSincronizacaoDeRotas } from "./controllers/roteiroController.js";
 
 dotenv.config();
 
@@ -132,6 +133,7 @@ const startServer = async () => {
     // Para evitar erros de sintaxe SQL ao adicionar constraints
     await sequelize.sync();
     console.log("✅ Database sincronizado!");
+    agendarSincronizacaoDeRotas();
 
     const queryInterface = sequelize.getQueryInterface();
 
@@ -156,6 +158,30 @@ const startServer = async () => {
           defaultValue: 480,
         });
         console.log("✅ Coluna jornada_diaria_minutos adicionada aos usuários!");
+      }
+
+      // Rotas do motorista (roteiros com início/fim) e envio ligado à rota
+      const colunasRoteirosRota = await queryInterface.describeTable("roteiros");
+      const novasRoteiros = [
+        ["data_inicio", { type: DataTypes.DATE, allowNull: true }],
+        ["data_fim", { type: DataTypes.DATE, allowNull: true }],
+        ["status", { type: DataTypes.STRING(20), allowNull: false, defaultValue: "AGENDADA" }],
+        ["iniciada_em", { type: DataTypes.DATE, allowNull: true }],
+        ["km_inicial", { type: DataTypes.INTEGER, allowNull: true }],
+        ["km_final", { type: DataTypes.INTEGER, allowNull: true }],
+        ["criado_por_id", { type: DataTypes.UUID, allowNull: true }],
+      ];
+      for (const [coluna, definicao] of novasRoteiros) {
+        if (!colunasRoteirosRota[coluna]) {
+          await queryInterface.addColumn("roteiros", coluna, definicao);
+        }
+      }
+      const colunasEnvios = await queryInterface.describeTable("envios");
+      if (!colunasEnvios.roteiroId) {
+        await queryInterface.addColumn("envios", "roteiroId", { type: DataTypes.UUID, allowNull: true });
+      }
+      if (colunasEnvios.transportadorId && colunasEnvios.transportadorId.allowNull === false) {
+        await sequelize.query('ALTER TABLE envios ALTER COLUMN "transportadorId" DROP NOT NULL;');
       }
 
       // Movimentação em passos: foto do relógio e checklist da visita
@@ -184,7 +210,7 @@ const startServer = async () => {
       ALTER TYPE "enum_usuarios_role" ADD VALUE IF NOT EXISTS 'FUNCIONARIO_CADASTRO';
     `);
     // Perfis novos: começam sem acesso (ver permissoes/acessos.js)
-    for (const perfil of ["CONSULTOR_VENDAS", "MOTORISTA", "ABASTECEDOR", "FINANCEIRO"]) {
+    for (const perfil of ["CONSULTOR_VENDAS", "MOTORISTA", "ABASTECEDOR", "FINANCEIRO", "GERENTE_VENDAS"]) {
       await sequelize.query(
         `ALTER TYPE "enum_usuarios_role" ADD VALUE IF NOT EXISTS '${perfil}';`,
       );

@@ -962,32 +962,35 @@ export const CATALOGO = [
     acoes: [
       {
         chave: "roteiros.ver",
-        nome: "Ver roteiros",
+        nome: "Ver rotas (o motorista vê as dele)",
         rotas: ["GET /api/roteiros"],
         telas: ["/roteiros"],
-        // A tela de roteiros também carrega lojas, máquinas e veículos
-        requer: ["lojas.ver", "maquinas.ver", "veiculos.ver"],
       },
       {
         chave: "roteiros.executar",
-        nome: "Executar roteiro (concluir itens e máquinas)",
+        nome: "Fazer a rota: iniciar, marcar paradas entregues e finalizar (devolve o veículo)",
         rotas: [
           "PATCH /api/roteiros/itens/:id/concluir",
           "PATCH /api/roteiros/itens/:id/maquinas/:maquinaId/concluir",
+          "POST /api/roteiros/:id/iniciar",
+          "POST /api/roteiros/:id/finalizar",
         ],
-        telas: ["/roteiros/:id/executar"],
         requer: ["roteiros.ver"],
       },
       {
         chave: "roteiros.verTodos",
-        nome: "Ver e executar roteiros de outros funcionários",
+        nome: "Ver e acompanhar as rotas de todos os motoristas",
         capacidade: true,
-        perfisPadrao: ["FUNCIONARIO_CADASTRO"],
+        perfisPadrao: ["FUNCIONARIO_CADASTRO", "FUNCIONARIO_ESTOQUE"],
         requer: ["roteiros.ver"],
       },
-      { chave: "roteiros.criar", nome: "Criar roteiro", rotas: ["POST /api/roteiros"] },
-      { chave: "roteiros.editar", nome: "Editar roteiro", rotas: ["PUT /api/roteiros/:id"] },
-      { chave: "roteiros.excluir", nome: "Excluir roteiro", rotas: ["DELETE /api/roteiros/:id"] },
+      {
+        chave: "roteiros.criar",
+        nome: "Criar rota (motorista, veículo, início e paradas)",
+        rotas: ["POST /api/roteiros", "GET /api/roteiros/opcoes"],
+      },
+      { chave: "roteiros.editar", nome: "Editar rota", rotas: ["PUT /api/roteiros/:id"] },
+      { chave: "roteiros.excluir", nome: "Excluir rota", rotas: ["DELETE /api/roteiros/:id"] },
       {
         chave: "roteiros.editarItens",
         nome: "Adicionar/editar/remover itens do roteiro",

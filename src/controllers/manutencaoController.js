@@ -620,6 +620,7 @@ const NOMES_PERFIS = {
   MOTORISTA: "Motorista",
   ABASTECEDOR: "Abastecedor",
   FINANCEIRO: "Financeiro",
+  GERENTE_VENDAS: "Gerente de Vendas",
 };
 
 // Quem autoriza solicitação de manutenção: Admin e Funcionário de Cadastro

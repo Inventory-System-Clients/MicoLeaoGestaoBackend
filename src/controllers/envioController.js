@@ -8,6 +8,8 @@ import {
   Lacre,
   Loja,
   Produto,
+  Roteiro,
+  RoteiroItem,
   Transportador,
   Usuario,
 } from "../models/index.js";
@@ -23,6 +25,12 @@ const includeEnvio = [
   { model: Loja, as: "lojaDestino", attributes: ["id", "nome"] },
   { model: Usuario, as: "separadoPor", attributes: ["id", "nome"] },
   { model: Transportador, as: "transportador", attributes: ["id", "nome"] },
+  {
+    model: Roteiro,
+    as: "roteiro",
+    attributes: ["id", "nome", "status", "dataInicio"],
+    include: [{ model: Usuario, as: "funcionario", attributes: ["id", "nome"] }],
+  },
   { model: Usuario, as: "despachadoPor", attributes: ["id", "nome"] },
   {
     model: Lacre,
@@ -80,16 +88,17 @@ export const criarEnvio = async (req, res) => {
   const transaction = await sequelize.transaction();
 
   try {
-    const { lojaDestinoId, transportadorId, observacao, lacres } = req.body;
+    const { lojaDestinoId, transportadorId, roteiroId, observacao, lacres } = req.body;
 
     if (!lojaDestinoId) {
       await transaction.rollback();
       return res.status(400).json({ error: "Selecione a loja de destino" });
     }
 
-    if (!transportadorId) {
+    // Quem leva: transportador (nome) ou uma rota do nosso motorista
+    if (!transportadorId && !roteiroId) {
       await transaction.rollback();
-      return res.status(400).json({ error: "Selecione o transportador" });
+      return res.status(400).json({ error: "Escolha o transportador ou a rota do motorista" });
     }
 
     if (!Array.isArray(lacres) || lacres.length === 0) {
@@ -160,15 +169,26 @@ export const criarEnvio = async (req, res) => {
       return res.status(404).json({ error: "Loja de destino não encontrada" });
     }
 
-    const transportador = await Transportador.findOne({
-      where: { id: transportadorId, ativo: true },
-      transaction,
-    });
-    if (!transportador) {
-      await transaction.rollback();
-      return res.status(400).json({
-        error: "Transportador informado inválido ou inativo",
+    if (transportadorId) {
+      const transportador = await Transportador.findOne({
+        where: { id: transportadorId, ativo: true },
+        transaction,
       });
+      if (!transportador) {
+        await transaction.rollback();
+        return res.status(400).json({
+          error: "Transportador informado inválido ou inativo",
+        });
+      }
+    }
+
+    let rota = null;
+    if (roteiroId) {
+      rota = await Roteiro.findByPk(roteiroId, { transaction });
+      if (!rota || rota.status === "FINALIZADA") {
+        await transaction.rollback();
+        return res.status(400).json({ error: "Rota inválida ou já finalizada" });
+      }
     }
 
     // Aviso (não bloqueante de forma rígida): confere se o saldo central
@@ -204,7 +224,8 @@ export const criarEnvio = async (req, res) => {
       {
         lojaDestinoId,
         separadoPorId: req.usuario.id,
-        transportadorId,
+        transportadorId: transportadorId || null,
+        roteiroId: rota ? rota.id : null,
         observacao: observacao || null,
       },
       { transaction },
@@ -228,6 +249,21 @@ export const criarEnvio = async (req, res) => {
         })),
         { transaction },
       );
+    }
+
+    // A loja do envio vira parada da rota (se ainda não for)
+    if (rota) {
+      const jaTemParada = await RoteiroItem.findOne({
+        where: { roteiroId: rota.id, tipo: "LOJA", lojaId: lojaDestinoId },
+        transaction,
+      });
+      if (!jaTemParada) {
+        const total = await RoteiroItem.count({ where: { roteiroId: rota.id }, transaction });
+        await RoteiroItem.create(
+          { roteiroId: rota.id, tipo: "LOJA", lojaId: lojaDestinoId, ordem: total },
+          { transaction },
+        );
+      }
     }
 
     await transaction.commit();

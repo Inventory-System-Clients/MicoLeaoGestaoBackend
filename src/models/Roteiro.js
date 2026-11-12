@@ -13,6 +13,44 @@ const Roteiro = sequelize.define(
       type: DataTypes.STRING(120),
       allowNull: false,
     },
+    // Rota do motorista (desde 2026-11-12): viagem com início marcado e fim
+    // quando o motorista finaliza. No início o veículo fica em uso; no fim é
+    // devolvido. Status: AGENDADA -> EM_ANDAMENTO -> FINALIZADA.
+    dataInicio: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      field: "data_inicio",
+    },
+    dataFim: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      field: "data_fim",
+    },
+    status: {
+      type: DataTypes.STRING(20),
+      allowNull: false,
+      defaultValue: "AGENDADA",
+    },
+    iniciadaEm: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      field: "iniciada_em",
+    },
+    kmInicial: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      field: "km_inicial",
+    },
+    kmFinal: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      field: "km_final",
+    },
+    criadoPorId: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      field: "criado_por_id",
+    },
     usuarioId: {
       type: DataTypes.UUID,
       allowNull: false,
