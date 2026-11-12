@@ -882,9 +882,9 @@ export const CATALOGO = [
       },
       {
         chave: "manutencao.criar",
-        nome: "Abrir manutenção",
-        rotas: ["POST /api/manutencoes"],
-        requer: ["manutencao.ver", "manutencao.listarFuncionarios"],
+        nome: "Solicitar manutenção (Cadastro/admin já mandam para um setor ou pessoa)",
+        rotas: ["POST /api/manutencoes", "GET /api/manutencoes/destinos"],
+        requer: ["manutencao.ver"],
       },
       {
         chave: "manutencao.listarFuncionarios",
@@ -893,8 +893,26 @@ export const CATALOGO = [
       },
       {
         chave: "manutencao.mudarStatus",
-        nome: "Mudar status da manutenção (andamento, concluir)",
-        rotas: ["PATCH /api/manutencoes/:id/status"],
+        nome: "Trabalhar na manutenção: aceitar, não consigo fazer, pedir serviço, concluir",
+        rotas: [
+          "POST /api/manutencoes/:id/aceitar",
+          "POST /api/manutencoes/:id/aguardar",
+          "POST /api/manutencoes/:id/servico",
+          "POST /api/manutencoes/:id/concluir",
+        ],
+        requer: ["manutencao.ver"],
+      },
+      {
+        chave: "manutencao.autorizar",
+        nome: "Autorizar ou recusar solicitações de manutenção",
+        rotas: ["POST /api/manutencoes/:id/autorizar", "POST /api/manutencoes/:id/recusar"],
+        requer: ["manutencao.ver"],
+      },
+      {
+        chave: "manutencao.administrar",
+        nome: "Reenviar manutenção e finalizar lançando o gasto",
+        somenteAdmin: true,
+        rotas: ["POST /api/manutencoes/:id/reenviar", "POST /api/manutencoes/:id/finalizar"],
         requer: ["manutencao.ver"],
       },
       {

@@ -2,7 +2,15 @@ import express from "express";
 import {
   alertasManutencaoAtrasada,
   alertasManutencaoRecorrente,
-  atualizarStatusManutencao,
+  aceitarManutencao,
+  aguardarManutencao,
+  solicitarServicoManutencao,
+  concluirManutencao,
+  reenviarManutencao,
+  finalizarManutencao,
+  listarDestinosManutencao,
+  autorizarManutencao,
+  recusarManutencao,
   criarManutencao,
   listarFuncionariosManutencao,
   listarManutencoes,
@@ -39,16 +47,42 @@ router.get(
   autorizarRole("ADMIN", "FUNCIONARIO_CADASTRO"),
   alertasManutencaoRecorrente,
 );
+// Qualquer usuário abre manutenção, para um setor ou uma pessoa
+router.get("/destinos", listarDestinosManutencao);
+router.post("/", registrarLog("CRIAR_MANUTENCAO", "Manutencao"), criarManutencao);
+
+// Quem recebeu: aceitar, não consigo (aguardando), serviço externo, concluir
+router.post("/:id/aceitar", registrarLog("ACEITAR_MANUTENCAO", "Manutencao"), aceitarManutencao);
+router.post("/:id/aguardar", registrarLog("AGUARDAR_MANUTENCAO", "Manutencao"), aguardarManutencao);
+router.post("/:id/servico", registrarLog("SERVICO_MANUTENCAO", "Manutencao"), solicitarServicoManutencao);
+router.post("/:id/concluir", registrarLog("CONCLUIR_MANUTENCAO", "Manutencao"), concluirManutencao);
+
+// Admin e Funcionário de Cadastro: autorizar ou recusar solicitações
 router.post(
-  "/",
+  "/:id/autorizar",
   autorizarRole("ADMIN", "FUNCIONARIO_CADASTRO"),
-  registrarLog("CRIAR_MANUTENCAO", "Manutencao"),
-  criarManutencao,
+  registrarLog("AUTORIZAR_MANUTENCAO", "Manutencao"),
+  autorizarManutencao,
 );
-router.patch(
-  "/:id/status",
-  registrarLog("ATUALIZAR_STATUS_MANUTENCAO", "Manutencao"),
-  atualizarStatusManutencao,
+router.post(
+  "/:id/recusar",
+  autorizarRole("ADMIN", "FUNCIONARIO_CADASTRO"),
+  registrarLog("RECUSAR_MANUTENCAO", "Manutencao"),
+  recusarManutencao,
+);
+
+// Só o admin: reenviar e finalizar (com o gasto)
+router.post(
+  "/:id/reenviar",
+  autorizarRole("ADMIN"),
+  registrarLog("REENVIAR_MANUTENCAO", "Manutencao"),
+  reenviarManutencao,
+);
+router.post(
+  "/:id/finalizar",
+  autorizarRole("ADMIN"),
+  registrarLog("FINALIZAR_MANUTENCAO", "Manutencao"),
+  finalizarManutencao,
 );
 router.get("/:id/pecas", listarPecasUsadasManutencao);
 router.post(

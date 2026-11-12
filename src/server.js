@@ -662,6 +662,21 @@ const startServer = async () => {
           "pecaPlanejadaConsumida",
           { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
         ],
+        // Fluxo novo (setor/pessoa, aceitar, aguardando, serviço, finalizar)
+        ["setor", { type: DataTypes.STRING(30), allowNull: true }],
+        ["destinatarioId", { type: DataTypes.UUID, allowNull: true }],
+        ["aceitaPorId", { type: DataTypes.UUID, allowNull: true }],
+        ["aceitaEm", { type: DataTypes.DATE, allowNull: true }],
+        ["motivoAguardando", { type: DataTypes.TEXT, allowNull: true }],
+        ["servicoExterno", { type: DataTypes.STRING(150), allowNull: true }],
+        ["servicoSolicitadoEm", { type: DataTypes.DATE, allowNull: true }],
+        ["finalizadaPorId", { type: DataTypes.UUID, allowNull: true }],
+        ["finalizadaEm", { type: DataTypes.DATE, allowNull: true }],
+        ["gastoDescricao", { type: DataTypes.TEXT, allowNull: true }],
+        ["autorizadaPorId", { type: DataTypes.UUID, allowNull: true }],
+        ["autorizadaEm", { type: DataTypes.DATE, allowNull: true }],
+        ["motivoRecusa", { type: DataTypes.TEXT, allowNull: true }],
+        ["historico", { type: DataTypes.JSONB, allowNull: false, defaultValue: [] }],
       ];
 
       for (const [nomeColuna, definicao] of colunasNovasManutencoes) {
@@ -687,18 +702,31 @@ const startServer = async () => {
       `);
       const statusLabels = enumRows.map((linha) => linha.enumlabel);
 
-      if (statusLabels.includes("PENDENTE") || statusLabels.includes("RESOLVIDA")) {
+      // Fluxo de 2026-11-12: PENDENTE, ACEITA, AGUARDANDO, CONCLUIDA,
+      // FINALIZADA. Roda enquanto o tipo ainda tiver algum valor antigo
+      // (ABERTA, EM_ANDAMENTO, AGUARDANDO_PECA ou o bem antigo RESOLVIDA).
+      // As que estavam CONCLUIDA no fluxo antigo já estavam encerradas:
+      // viram FINALIZADA. Em andamento vira ACEITA por quem era responsável.
+      const valoresAntigos = ["ABERTA", "EM_ANDAMENTO", "AGUARDANDO_PECA", "RESOLVIDA"];
+      if (statusLabels.some((valor) => valoresAntigos.includes(valor))) {
         await sequelize.query(`
           ALTER TABLE manutencoes ALTER COLUMN status DROP DEFAULT;
           ALTER TABLE manutencoes ALTER COLUMN status TYPE VARCHAR(30) USING status::text;
-          UPDATE manutencoes SET status = 'ABERTA' WHERE status = 'PENDENTE';
-          UPDATE manutencoes SET status = 'CONCLUIDA' WHERE status = 'RESOLVIDA';
+          UPDATE manutencoes SET status = 'FINALIZADA', "finalizadaEm" = COALESCE("resolvidoEm", "updatedAt")
+            WHERE status IN ('CONCLUIDA', 'RESOLVIDA');
+          UPDATE manutencoes SET status = 'PENDENTE' WHERE status = 'ABERTA';
+          UPDATE manutencoes SET status = 'AGUARDANDO', "motivoAguardando" = 'Aguardando peça'
+            WHERE status = 'AGUARDANDO_PECA';
+          UPDATE manutencoes m SET status = 'ACEITA', "aceitaEm" = m."updatedAt",
+            "aceitaPorId" = COALESCE(m."responsavelId",
+              (SELECT mu."usuarioId" FROM manutencao_usuarios mu WHERE mu."manutencaoId" = m.id LIMIT 1))
+            WHERE status = 'EM_ANDAMENTO';
           DROP TYPE IF EXISTS "enum_manutencoes_status";
-          CREATE TYPE "enum_manutencoes_status" AS ENUM ('ABERTA', 'EM_ANDAMENTO', 'AGUARDANDO_PECA', 'CONCLUIDA');
+          CREATE TYPE "enum_manutencoes_status" AS ENUM ('SOLICITADA', 'PENDENTE', 'ACEITA', 'AGUARDANDO', 'CONCLUIDA', 'FINALIZADA', 'RECUSADA');
           ALTER TABLE manutencoes ALTER COLUMN status TYPE "enum_manutencoes_status" USING status::"enum_manutencoes_status";
-          ALTER TABLE manutencoes ALTER COLUMN status SET DEFAULT 'ABERTA';
+          ALTER TABLE manutencoes ALTER COLUMN status SET DEFAULT 'PENDENTE';
         `);
-        console.log("✅ Status das manutenções migrado para o novo fluxo!");
+        console.log("✅ Status das manutenções migrado para o fluxo novo (pendente/aceita/aguardando/concluída/finalizada)!");
       }
     }
 

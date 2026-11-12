@@ -13,10 +13,13 @@ import {
   Usuario,
 } from "../models/index.js";
 import { normalizarStatusOperacao } from "./maquinaController.js";
-import { temAcao } from "../permissoes/acessos.js";
+import { temAcao, ehPerfilAcessoTotal, lerAjustes } from "../permissoes/acessos.js";
 
-const STATUS_ABERTOS = ["ABERTA", "EM_ANDAMENTO", "AGUARDANDO_PECA"];
-const STATUS_VALIDOS = [...STATUS_ABERTOS, "CONCLUIDA"];
+// Máquina fica "em manutenção" enquanto tiver alguma nesses status
+const STATUS_ABERTOS = ["PENDENTE", "ACEITA", "AGUARDANDO"];
+const STATUS_VALIDOS = [...STATUS_ABERTOS, "CONCLUIDA", "FINALIZADA"];
+// Perfis que não recebem manutenção como setor
+const PERFIS_FORA_DO_SETOR = ["ADMIN", "DESENVOLVEDOR"];
 const DIAS_RECORRENCIA = 30;
 const MINIMO_RECENTES_RECORRENCIA = 3;
 const MINIMO_MESMO_TIPO_RECORRENCIA = 2;
@@ -37,6 +40,10 @@ const includeAdmin = [
     as: "responsavel",
     attributes: ["id", "nome", "email"],
   },
+  { model: Usuario, as: "destinatario", attributes: ["id", "nome", "role"] },
+  { model: Usuario, as: "aceitaPor", attributes: ["id", "nome", "role"] },
+  { model: Usuario, as: "finalizadaPor", attributes: ["id", "nome"] },
+  { model: Usuario, as: "autorizadaPor", attributes: ["id", "nome"] },
   {
     model: Usuario,
     as: "funcionariosPermitidos",
@@ -85,6 +92,7 @@ const includeAdmin = [
 // quem está na lista de funcionários permitidos da manutenção.
 const usuarioPodeAgirNaManutencao = (manutencao, usuario) =>
   temAcao(usuario, "manutencao.gerenciarTodas") ||
+  manutencao.aceitaPorId === usuario.id ||
   manutencao.responsavelId === usuario.id ||
   (manutencao.funcionariosPermitidos || []).some(
     (permitido) => permitido.id === usuario.id,
@@ -367,6 +375,8 @@ export const criarManutencao = async (req, res) => {
       tipoProblema,
       prazo,
       pecaPlanejada,
+      setor,
+      destinatarioId,
     } = req.body;
 
     if (!titulo || !descricao) {
@@ -376,14 +386,19 @@ export const criarManutencao = async (req, res) => {
         .json({ error: "Título e descrição são obrigatórios" });
     }
 
-    if (!Array.isArray(funcionariosIds) || funcionariosIds.length === 0) {
+    // Quem autoriza (Admin/Cadastro) já manda pra um setor ou pessoa; os
+    // outros só solicitam e a solicitação espera autorização
+    const jaAutorizada = podeAutorizar(req.usuario);
+    const destino = jaAutorizada
+      ? await validarDestino({ setor, destinatarioId, transaction })
+      : { setor: null, destinatarioId: null };
+    if (destino.erro) {
       await transaction.rollback();
-      return res
-        .status(400)
-        .json({ error: "Selecione ao menos um funcionário" });
+      return res.status(400).json({ error: destino.erro });
     }
 
-    const idsUnicos = [...new Set(funcionariosIds.filter(Boolean))];
+    // Lista antiga de funcionários: opcional (telas antigas ainda mandam)
+    const idsUnicos = [...new Set((Array.isArray(funcionariosIds) ? funcionariosIds : []).filter(Boolean))];
 
     const pecaPlanejadaValida =
       pecaPlanejada && pecaPlanejada.pecaId && pecaPlanejada.quantidade;
@@ -469,15 +484,13 @@ export const criarManutencao = async (req, res) => {
       });
     }
 
-    const funcionarios = await Usuario.findAll({
-      where: {
-        id: { [Op.in]: idsUnicos },
-        role: "FUNCIONARIO",
-        ativo: true,
-      },
-      attributes: ["id"],
-      transaction,
-    });
+    const funcionarios = idsUnicos.length
+      ? await Usuario.findAll({
+          where: { id: { [Op.in]: idsUnicos }, ativo: true },
+          attributes: ["id"],
+          transaction,
+        })
+      : [];
 
     if (funcionarios.length !== idsUnicos.length) {
       await transaction.rollback();
@@ -520,6 +533,16 @@ export const criarManutencao = async (req, res) => {
         tipoProblema: tipoProblema || null,
         prazo: prazo || null,
         criadoPorId: req.usuario.id,
+        status: jaAutorizada ? "PENDENTE" : "SOLICITADA",
+        setor: destino.setor,
+        destinatarioId: destino.destinatarioId,
+        autorizadaPorId: jaAutorizada ? req.usuario.id : null,
+        autorizadaEm: jaAutorizada ? new Date() : null,
+        historico: [
+          jaAutorizada
+            ? eventoHistorico(req.usuario, "CRIADA", "PENDENTE", `Enviada para ${destino.rotulo}`)
+            : eventoHistorico(req.usuario, "SOLICITADA", "SOLICITADA", "Aguardando autorização"),
+        ],
         pecaPlanejadaId: pecaPlanejadaValida ? pecaPlanejada.pecaId : null,
         pecaPlanejadaFuncionarioId: pecaPlanejadaValida
           ? pecaPlanejada.funcionarioId
@@ -587,6 +610,305 @@ export const criarManutencao = async (req, res) => {
   }
 };
 
+// ---------- Fluxo: setor/pessoa, aceitar, aguardando, serviço, finalizar ----------
+
+const NOMES_PERFIS = {
+  FUNCIONARIO: "Funcionário",
+  FUNCIONARIO_ESTOQUE: "Chefe de Expedição",
+  FUNCIONARIO_CADASTRO: "Funcionário de Cadastro",
+  CONSULTOR_VENDAS: "Consultor de Vendas",
+  MOTORISTA: "Motorista",
+  ABASTECEDOR: "Abastecedor",
+  FINANCEIRO: "Financeiro",
+};
+
+// Quem autoriza solicitação de manutenção: Admin e Funcionário de Cadastro
+// (ou quem ganhar a ação manutencao.autorizar nos acessos)
+const podeAutorizar = (usuario) => {
+  if (ehPerfilAcessoTotal(usuario?.role)) return true;
+  const { adicionadas, removidas } = lerAjustes(usuario);
+  if (removidas.includes("manutencao.autorizar")) return false;
+  return usuario?.role === "FUNCIONARIO_CADASTRO" || adicionadas.includes("manutencao.autorizar");
+};
+
+const eventoHistorico = (usuario, acao, status, detalhe = null) => ({
+  acao,
+  status,
+  usuarioId: usuario?.id || null,
+  usuarioNome: usuario?.nome || null,
+  em: new Date().toISOString(),
+  detalhe,
+});
+
+const validarDestino = async ({ setor, destinatarioId, transaction }) => {
+  if (destinatarioId) {
+    const pessoa = await Usuario.findOne({
+      where: { id: destinatarioId, ativo: true },
+      attributes: ["id", "nome", "role"],
+      transaction,
+    });
+    if (!pessoa) return { erro: "Pessoa escolhida não encontrada ou inativa." };
+    return { setor: pessoa.role, destinatarioId: pessoa.id, rotulo: pessoa.nome };
+  }
+  const perfis = Usuario.getAttributes().role.values.filter((p) => !PERFIS_FORA_DO_SETOR.includes(p));
+  if (!setor || !perfis.includes(setor)) {
+    return { erro: "Escolha para qual setor ou pessoa vai a manutenção." };
+  }
+  return { setor, destinatarioId: null, rotulo: `o setor ${NOMES_PERFIS[setor] || setor}` };
+};
+
+// Setores (perfis com gente ativa) e pessoas, para escolher o destino
+export const listarDestinosManutencao = async (req, res) => {
+  try {
+    const pessoas = await Usuario.findAll({
+      where: { ativo: true, role: { [Op.notIn]: PERFIS_FORA_DO_SETOR } },
+      attributes: ["id", "nome", "role"],
+      order: [["nome", "ASC"]],
+    });
+    const setores = [...new Set(pessoas.map((p) => p.role))].map((valor) => ({
+      valor,
+      nome: NOMES_PERFIS[valor] || valor,
+      pessoas: pessoas.filter((p) => p.role === valor).length,
+    }));
+    // Onde está o problema: qualquer um abre, então vai a lista de lojas e
+    // máquinas ativas (sem o Depósito Principal)
+    const [lojas, maquinas] = await Promise.all([
+      Loja.findAll({ where: { ativo: true }, attributes: ["id", "nome"], order: [["nome", "ASC"]] }),
+      Maquina.findAll({
+        where: { ativo: true, lojaId: { [Op.ne]: null } },
+        attributes: ["id", "codigo", "nome", "tipo", "lojaId"],
+        order: [["codigo", "ASC"]],
+      }),
+    ]);
+    res.json({
+      setores,
+      pessoas,
+      lojas: lojas.filter((l) => !["deposito principal", "depósito principal"].includes(String(l.nome).trim().toLowerCase())),
+      maquinas,
+    });
+  } catch (error) {
+    console.error("Erro ao listar destinos de manutenção:", error);
+    res.status(500).json({ error: "Erro ao carregar setores e pessoas" });
+  }
+};
+
+// Carrega a manutenção travada (uma ação por vez) com o que as regras usam
+const carregarParaAcao = (id, transaction) =>
+  Manutencao.findByPk(id, {
+    include: [{ model: Usuario, as: "funcionariosPermitidos", attributes: ["id"], through: { attributes: [] } }],
+    transaction,
+    lock: { level: transaction.LOCK.UPDATE, of: Manutencao },
+  });
+
+const podeVerPendente = (manutencao, usuario) => {
+  if (manutencao.destinatarioId) return manutencao.destinatarioId === usuario.id;
+  if (manutencao.setor) return manutencao.setor === usuario.role;
+  return (
+    manutencao.responsavelId === usuario.id ||
+    (manutencao.funcionariosPermitidos || []).some((p) => p.id === usuario.id)
+  );
+};
+
+const responderComManutencao = async (res, id) => {
+  const atualizada = await Manutencao.findByPk(id, { include: includeAdmin });
+  res.json(atualizada);
+};
+
+// Executa uma ação do fluxo numa transação: `regra` devolve { erro, status }
+// ou os dados a gravar (+ evento do histórico)
+const executarAcao = (nomeAcao, regra) => async (req, res) => {
+  const transaction = await sequelize.transaction();
+  try {
+    const manutencao = await carregarParaAcao(req.params.id, transaction);
+    if (!manutencao) {
+      await transaction.rollback();
+      return res.status(404).json({ error: "Manutenção não encontrada" });
+    }
+    const resultado = await regra({ manutencao, req, transaction });
+    if (resultado.erro) {
+      await transaction.rollback();
+      return res.status(resultado.status || 400).json({ error: resultado.erro });
+    }
+    const { dados, evento } = resultado;
+    await manutencao.update(
+      { ...dados, historico: [...(manutencao.historico || []), evento] },
+      { transaction },
+    );
+    await sincronizarStatusMaquina(manutencao.maquinaId, transaction);
+    await transaction.commit();
+    res.locals.entityId = manutencao.id;
+    return responderComManutencao(res, manutencao.id);
+  } catch (error) {
+    await transaction.rollback();
+    console.error(`Erro ao ${nomeAcao} manutenção:`, error);
+    res.status(500).json({ error: `Erro ao ${nomeAcao} a manutenção` });
+  }
+};
+
+// Solicitada -> Pendente: Cadastro/admin autoriza escolhendo setor ou pessoa
+export const autorizarManutencao = executarAcao("autorizar", async ({ manutencao, req, transaction }) => {
+  if (!podeAutorizar(req.usuario)) return { erro: "Você não pode autorizar manutenções.", status: 403 };
+  if (manutencao.status !== "SOLICITADA") return { erro: "Essa solicitação já foi analisada.", status: 409 };
+  const destino = await validarDestino({ ...req.body, transaction });
+  if (destino.erro) return { erro: destino.erro };
+  const dados = {
+    status: "PENDENTE",
+    setor: destino.setor,
+    destinatarioId: destino.destinatarioId,
+    autorizadaPorId: req.usuario.id,
+    autorizadaEm: new Date(),
+  };
+  if (req.body?.prazo) dados.prazo = req.body.prazo;
+  return { dados, evento: eventoHistorico(req.usuario, "AUTORIZADA", "PENDENTE", `Enviada para ${destino.rotulo}`) };
+});
+
+// Solicitada -> Recusada (com motivo)
+export const recusarManutencao = executarAcao("recusar", async ({ manutencao, req }) => {
+  if (!podeAutorizar(req.usuario)) return { erro: "Você não pode recusar manutenções.", status: 403 };
+  if (manutencao.status !== "SOLICITADA") return { erro: "Essa solicitação já foi analisada.", status: 409 };
+  const motivo = String(req.body?.motivo || "").trim();
+  if (motivo.length < 3) return { erro: "Diga por que a solicitação foi recusada." };
+  return {
+    dados: { status: "RECUSADA", motivoRecusa: motivo.slice(0, 1000), autorizadaPorId: req.usuario.id, autorizadaEm: new Date() },
+    evento: eventoHistorico(req.usuario, "RECUSADA", "RECUSADA", motivo.slice(0, 300)),
+  };
+});
+
+const ehDeQuemAceitou = (manutencao, usuario) =>
+  manutencao.aceitaPorId === usuario.id || temAcao(usuario, "manutencao.gerenciarTodas");
+
+// Pendente -> Aceita: o primeiro que aceitar fica com ela (some pros outros)
+export const aceitarManutencao = executarAcao("aceitar", async ({ manutencao, req }) => {
+  if (manutencao.status === "SOLICITADA") {
+    return { erro: "Essa manutenção ainda não foi autorizada.", status: 409 };
+  }
+  if (manutencao.status !== "PENDENTE") {
+    return { erro: "Essa manutenção já foi aceita por outra pessoa.", status: 409 };
+  }
+  if (!podeVerPendente(manutencao, req.usuario) && !temAcao(req.usuario, "manutencao.gerenciarTodas")) {
+    return { erro: "Essa manutenção não foi enviada para você.", status: 403 };
+  }
+  return {
+    dados: { status: "ACEITA", aceitaPorId: req.usuario.id, aceitaEm: new Date(), motivoAguardando: null },
+    evento: eventoHistorico(req.usuario, "ACEITA", "ACEITA"),
+  };
+});
+
+// Aceita -> Aguardando: não deu pra fazer (ex.: faltou peça); volta pro admin
+export const aguardarManutencao = executarAcao("atualizar", async ({ manutencao, req }) => {
+  const motivo = String(req.body?.motivo || "").trim();
+  if (manutencao.status !== "ACEITA") return { erro: "Só dá para fazer isso numa manutenção aceita." };
+  if (!ehDeQuemAceitou(manutencao, req.usuario)) return { erro: "Só quem aceitou pode fazer isso.", status: 403 };
+  if (motivo.length < 3) return { erro: "Conte por que não deu para fazer (ex.: faltou peça)." };
+  return {
+    dados: { status: "AGUARDANDO", motivoAguardando: motivo.slice(0, 1000) },
+    evento: eventoHistorico(req.usuario, "AGUARDANDO", "AGUARDANDO", motivo.slice(0, 300)),
+  };
+});
+
+// Serviço de terceiro (ex.: serralheiro): fica anotado e segue aceita
+export const solicitarServicoManutencao = executarAcao("atualizar", async ({ manutencao, req }) => {
+  const servico = String(req.body?.servico || "").trim();
+  if (manutencao.status !== "ACEITA") return { erro: "Só dá para solicitar serviço numa manutenção aceita." };
+  if (!ehDeQuemAceitou(manutencao, req.usuario)) return { erro: "Só quem aceitou pode solicitar serviço.", status: 403 };
+  if (servico.length < 3) return { erro: "Diga qual serviço foi solicitado (ex.: serralheiro)." };
+  return {
+    dados: { servicoExterno: servico.slice(0, 150), servicoSolicitadoEm: new Date() },
+    evento: eventoHistorico(req.usuario, "SERVICO", "ACEITA", servico.slice(0, 150)),
+  };
+});
+
+// Aceita -> Concluída: quem pegou terminou (desconta a peça planejada, se houver)
+export const concluirManutencao = executarAcao("concluir", async ({ manutencao, req, transaction }) => {
+  const feito = String(req.body?.observacao || "").trim();
+  if (manutencao.status !== "ACEITA") return { erro: "Só dá para concluir uma manutenção aceita." };
+  if (!ehDeQuemAceitou(manutencao, req.usuario)) return { erro: "Só quem aceitou pode concluir.", status: 403 };
+  const dados = { status: "CONCLUIDA", resolvidoPorId: req.usuario.id, resolvidoEm: new Date() };
+  if (manutencao.pecaPlanejadaId && !manutencao.pecaPlanejadaConsumida) {
+    const resultadoPeca = await registrarUsoDePecaInterno({
+      manutencaoId: manutencao.id,
+      pecaId: manutencao.pecaPlanejadaId,
+      quantidade: manutencao.pecaPlanejadaQuantidade,
+      funcionarioId: manutencao.pecaPlanejadaFuncionarioId,
+      observacao: manutencao.pecaPlanejadaObservacao,
+      transaction,
+    });
+    if (resultadoPeca) return { erro: `Não foi possível concluir: ${resultadoPeca.error}`, status: resultadoPeca.status };
+    dados.pecaPlanejadaConsumida = true;
+  }
+  return { dados, evento: eventoHistorico(req.usuario, "CONCLUIDA", "CONCLUIDA", feito.slice(0, 500) || null) };
+});
+
+// Admin: manda de novo para um setor ou pessoa (inclusive a mesma)
+export const reenviarManutencao = executarAcao("reenviar", async ({ manutencao, req, transaction }) => {
+  if (["CONCLUIDA", "FINALIZADA"].includes(manutencao.status)) {
+    return { erro: "Essa manutenção já foi concluída." };
+  }
+  if (["SOLICITADA", "RECUSADA"].includes(manutencao.status)) {
+    return { erro: "Essa solicitação ainda não foi autorizada." };
+  }
+  const destino = await validarDestino({ ...req.body, transaction });
+  if (destino.erro) return { erro: destino.erro };
+  const observacao = String(req.body?.observacao || "").trim();
+  return {
+    dados: {
+      status: "PENDENTE",
+      setor: destino.setor,
+      destinatarioId: destino.destinatarioId,
+      aceitaPorId: null,
+      aceitaEm: null,
+    },
+    evento: eventoHistorico(
+      req.usuario,
+      "REENVIADA",
+      "PENDENTE",
+      `Para ${destino.rotulo}${observacao ? ` — ${observacao.slice(0, 200)}` : ""}`,
+    ),
+  };
+});
+
+// Admin: Concluída -> Finalizada, com o gasto obrigatório (pode ser R$ 0)
+export const finalizarManutencao = executarAcao("finalizar", async ({ manutencao, req, transaction }) => {
+  if (manutencao.status !== "CONCLUIDA") return { erro: "Só dá para finalizar uma manutenção concluída." };
+  const textoValor = String(req.body?.custo ?? "").replace(",", ".").trim();
+  const custo = textoValor === "" ? NaN : Number(textoValor);
+  const descricao = String(req.body?.gastoDescricao || "").trim();
+  if (!Number.isFinite(custo) || custo < 0) return { erro: "Informe o valor gasto (pode ser 0)." };
+  if (descricao.length < 3) return { erro: "Descreva o que foi gasto (ou por que não teve gasto)." };
+  const valor = Math.round(custo * 100) / 100;
+  if (valor > 0) {
+    if (!manutencao.lojaId) return { erro: "Essa manutenção não tem loja para lançar o gasto." };
+    const agora = new Date();
+    await GastoVariavel.create(
+      {
+        lojaId: manutencao.lojaId,
+        nome: `Manutenção - ${manutencao.titulo}`.slice(0, 100),
+        valor,
+        observacao: `Gerado automaticamente pela manutenção ${manutencao.id} | ${descricao}`,
+        dataInicio: agora,
+        dataFim: agora,
+        usuarioId: req.usuario.id,
+      },
+      { transaction },
+    );
+  }
+  return {
+    dados: {
+      status: "FINALIZADA",
+      custo: valor,
+      gastoDescricao: descricao.slice(0, 1000),
+      finalizadaPorId: req.usuario.id,
+      finalizadaEm: new Date(),
+    },
+    evento: eventoHistorico(
+      req.usuario,
+      "FINALIZADA",
+      "FINALIZADA",
+      `Gasto R$ ${valor.toFixed(2).replace(".", ",")} — ${descricao.slice(0, 200)}`,
+    ),
+  };
+});
+
 export const listarManutencoes = async (req, res) => {
   try {
     const { status, dataInicio, dataFim, lojaId, maquinaId, tipoProblema, usuarioId } =
@@ -595,57 +917,26 @@ export const listarManutencoes = async (req, res) => {
     const where = {};
 
     if (!temAcao(req.usuario, "manutencao.gerenciarTodas")) {
-      where.status = { [Op.ne]: "CONCLUIDA" };
+      // Pendente: quem é do setor (ou a pessoa escolhida). Depois de aceita,
+      // só quem aceitou. Quem abriu acompanha a sua até ser finalizada.
+      // Finalizada some; recusada fica 7 dias pra quem pediu ver o motivo
+      where.status = { [Op.ne]: "FINALIZADA" };
+      const seteDiasAtras = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      where[Op.and] = [
+        { [Op.or]: [{ status: { [Op.ne]: "RECUSADA" } }, { autorizadaEm: { [Op.gte]: seteDiasAtras } }] },
+      ];
       where[Op.or] = [
-        { responsavelId: req.usuario.id },
-        { "$funcionariosPermitidos.id$": req.usuario.id },
+        { aceitaPorId: req.usuario.id },
+        { criadoPorId: req.usuario.id },
+        { status: "PENDENTE", destinatarioId: req.usuario.id },
+        { status: "PENDENTE", destinatarioId: null, setor: req.usuario.role },
+        // Manutenções antigas (antes do setor): quem estava na lista
+        { status: "PENDENTE", setor: null, destinatarioId: null, responsavelId: req.usuario.id },
+        { status: "PENDENTE", setor: null, destinatarioId: null, "$funcionariosPermitidos.id$": req.usuario.id },
       ];
-      include = [
-        {
-          model: Usuario,
-          as: "criadoPor",
-          attributes: ["id", "nome", "email", "role"],
-        },
-        {
-          model: Usuario,
-          as: "resolvidoPor",
-          attributes: ["id", "nome", "email", "role"],
-        },
-        {
-          model: Usuario,
-          as: "responsavel",
-          attributes: ["id", "nome", "email"],
-        },
-        {
-          model: Usuario,
-          as: "funcionariosPermitidos",
-          attributes: ["id", "nome", "email"],
-          through: { attributes: [] },
-          required: false,
-        },
-        {
-          model: Loja,
-          as: "loja",
-          attributes: ["id", "nome"],
-        },
-        {
-          model: Maquina,
-          as: "maquina",
-          attributes: ["id", "codigo", "nome", "tipo", "statusOperacao"],
-        },
-        {
-          model: ManutencaoPeca,
-          as: "pecasUsadas",
-          include: [
-            {
-              model: Peca,
-              as: "peca",
-              attributes: ["id", "codigo", "nome", "unidade"],
-            },
-            { model: Usuario, as: "usuario", attributes: ["id", "nome"] },
-          ],
-        },
-      ];
+      include = includeAdmin.map((item) =>
+        item.as === "funcionariosPermitidos" ? { ...item, required: false } : item,
+      );
     } else {
       if (status && STATUS_VALIDOS.includes(status)) {
         where.status = status;

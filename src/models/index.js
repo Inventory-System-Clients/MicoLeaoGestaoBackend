@@ -268,6 +268,10 @@ Manutencao.belongsTo(Usuario, {
   foreignKey: "resolvidoPorId",
   as: "resolvidoPor",
 });
+Manutencao.belongsTo(Usuario, { foreignKey: "destinatarioId", as: "destinatario" });
+Manutencao.belongsTo(Usuario, { foreignKey: "aceitaPorId", as: "aceitaPor" });
+Manutencao.belongsTo(Usuario, { foreignKey: "finalizadaPorId", as: "finalizadaPor" });
+Manutencao.belongsTo(Usuario, { foreignKey: "autorizadaPorId", as: "autorizadaPor" });
 
 Manutencao.belongsToMany(Usuario, {
   through: ManutencaoUsuario,

@@ -10,12 +10,21 @@ export const PERFIS_LEGADOS = ["FUNCIONARIO", "FUNCIONARIO_ESTOQUE", "FUNCIONARI
 
 // Perfis que começam sem nada: só usam o que está na lista (padrão + ajustes).
 // Para mudar o padrão de um desses perfis, edite a lista aqui.
+// Todo mundo abre manutenção e trabalha nas que vierem pro seu setor
+const MANUTENCAO_BASICA = [
+  "manutencao.ver",
+  "manutencao.criar",
+  "manutencao.mudarStatus",
+  "manutencao.registrarPeca",
+  "manutencao.registrarPecaQuebrada",
+];
+
 export const PADRAO_PERFIS_RESTRITOS = {
-  CONSULTOR_VENDAS: ["ponto.bater", "metas.minhas", "visitas.registrar"],
-  MOTORISTA: ["ponto.bater", "metas.minhas"],
-  ABASTECEDOR: ["ponto.bater", "metas.minhas"],
+  CONSULTOR_VENDAS: ["ponto.bater", "metas.minhas", "visitas.registrar", ...MANUTENCAO_BASICA],
+  MOTORISTA: ["ponto.bater", "metas.minhas", ...MANUTENCAO_BASICA],
+  ABASTECEDOR: ["ponto.bater", "metas.minhas", ...MANUTENCAO_BASICA],
   // Começa só com as metas por loja; os outros acessos vêm depois
-  FINANCEIRO: ["ponto.bater", "metas.minhas", "metas.gerenciar"],
+  FINANCEIRO: ["ponto.bater", "metas.minhas", "metas.gerenciar", ...MANUTENCAO_BASICA],
 };
 
 // Limites que já vêm para todos, menos Admin e Desenvolvedor. No usuário dá
