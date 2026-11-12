@@ -22,7 +22,8 @@ const MANUTENCAO_BASICA = [
 export const PADRAO_PERFIS_RESTRITOS = {
   CONSULTOR_VENDAS: ["ponto.bater", "metas.minhas", "visitas.registrar", ...MANUTENCAO_BASICA],
   MOTORISTA: ["ponto.bater", "metas.minhas", ...MANUTENCAO_BASICA],
-  ABASTECEDOR: ["ponto.bater", "metas.minhas", ...MANUTENCAO_BASICA],
+  // Mesmo trabalho do Consultor (ponto + movimentação nas lojas dele), sem metas
+  ABASTECEDOR: ["ponto.bater", "visitas.registrar", ...MANUTENCAO_BASICA],
   // Começa só com as metas por loja; os outros acessos vêm depois
   FINANCEIRO: ["ponto.bater", "metas.minhas", "metas.gerenciar", ...MANUTENCAO_BASICA],
 };

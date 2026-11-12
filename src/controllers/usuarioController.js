@@ -20,8 +20,9 @@ const obterLojasPermitidasPorRole = async (role, lojasPermitidas = []) => {
     return lojas.map((loja) => loja.id);
   }
 
-  // Consultor de Vendas também trabalha só nas lojas escolhidas no cadastro
-  if (role === "FUNCIONARIO" || role === "CONSULTOR_VENDAS") {
+  // Consultor de Vendas e Abastecedor também trabalham só nas lojas
+  // escolhidas no cadastro
+  if (["FUNCIONARIO", "CONSULTOR_VENDAS", "ABASTECEDOR"].includes(role)) {
     return lojasPermitidas;
   }
 
