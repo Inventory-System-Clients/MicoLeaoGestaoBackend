@@ -7,6 +7,7 @@ const router = express.Router();
 // Movimentação em passos (Consultor de Vendas)
 router.get("/lojas", autenticar, visitaController.lojas);
 router.get("/maquinas/:id", autenticar, visitaController.maquina);
+router.post("/analisar-foto", autenticar, visitaController.analisarFoto);
 router.post(
   "/",
   autenticar,

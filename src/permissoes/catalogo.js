@@ -1102,7 +1102,7 @@ export const CATALOGO = [
       {
         chave: "visitas.registrar",
         nome: "Fazer movimentação em passos nas próprias lojas (foto, abastecimento, limpeza, conferência)",
-        rotas: ["GET /api/visitas/lojas", "GET /api/visitas/maquinas/:id", "POST /api/visitas"],
+        rotas: ["GET /api/visitas/lojas", "GET /api/visitas/maquinas/:id", "POST /api/visitas", "POST /api/visitas/analisar-foto"],
         telas: ["/nova-movimentacao"],
       },
     ],

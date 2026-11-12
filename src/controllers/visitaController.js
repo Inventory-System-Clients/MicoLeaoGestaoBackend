@@ -10,6 +10,10 @@ import {
 } from "../models/index.js";
 import { temAcao } from "../permissoes/acessos.js";
 import { registrarMovimentacao } from "./movimentacaoController.js";
+import { analisarFotoPelucias } from "./assistenteIaController.js";
+
+// Fotos da movimentação vêm do Cloudinary (upload direto do navegador)
+const URL_FOTO_VALIDA = /^https:\/\/res\.cloudinary\.com\//;
 
 // Movimentação em passos (tela do Consultor de Vendas): escolhe a loja e a
 // máquina, e faz a visita como um checklist — foto do relógio com IN/OUT,
@@ -183,6 +187,15 @@ const visitaController = {
         recolhimentoFichas: recolheu,
         fichasPendentesAntes: pendentes.total,
         fichasRecolhidas: recolheu ? pendentes.total + fichasDoDia : 0,
+        // Foto final das pelúcias e o que a IA disse (só aviso)
+        fotoFinalUrl: URL_FOTO_VALIDA.test(checklist.fotoFinalUrl || "") ? checklist.fotoFinalUrl : null,
+        analiseFotoFinal:
+          checklist.analiseFotoFinal && typeof checklist.analiseFotoFinal === "object"
+            ? {
+                todasDeFrente: checklist.analiseFotoFinal.todasDeFrente === true,
+                mensagem: String(checklist.analiseFotoFinal.mensagem || "").slice(0, 300),
+              }
+            : null,
       };
       return registrarMovimentacao(req, res, next);
     } catch (error) {
@@ -190,6 +203,22 @@ const visitaController = {
       res.status(500).json({ error: "Erro ao salvar a movimentação" });
     }
   },
+};
+
+// IA confere se as pelúcias estão de frente na foto final (só aviso)
+visitaController.analisarFoto = async (req, res) => {
+  const fotoUrl = String(req.body?.fotoUrl || "");
+  if (!URL_FOTO_VALIDA.test(fotoUrl)) {
+    return res.status(400).json({ error: "Foto inválida." });
+  }
+  try {
+    const analise = await analisarFotoPelucias({ imagemUrl: fotoUrl });
+    res.json({ disponivel: true, ...analise });
+  } catch (error) {
+    console.error("Erro ao analisar foto das pelúcias:", error.message);
+    // Sem IA (sem chave, fora do ar): segue sem aviso, não trava a visita
+    res.json({ disponivel: false, mensagem: "Não foi possível analisar a foto agora." });
+  }
 };
 
 export default visitaController;

@@ -1212,3 +1212,78 @@ export const lerContadoresPorImagem = async (req, res) => {
     });
   }
 };
+
+// Foto final da movimentação: confere se as pelúcias estão com o rosto
+// virado para frente (vitrine). Só gera aviso — não bloqueia nada.
+const schemaFotoPelucias = {
+  type: "object",
+  additionalProperties: false,
+  required: ["temPelucias", "todasDeFrente", "quantidadeDeCostas", "mensagem", "confianca"],
+  properties: {
+    temPelucias: { type: "boolean" },
+    todasDeFrente: { type: "boolean" },
+    quantidadeDeCostas: { type: ["integer", "null"] },
+    mensagem: { type: "string" },
+    confianca: { type: "string", enum: ["alta", "media", "baixa"] },
+  },
+};
+
+export const analisarFotoPelucias = async ({ imagemUrl }) => {
+  if (!process.env.OPENAI_API_KEY) {
+    const erro = new Error("OPENAI_API_KEY nao configurada no backend");
+    erro.status = 503;
+    throw erro;
+  }
+
+  const resposta = await fetch(OPENAI_RESPONSES_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: MODELO_PADRAO,
+      instructions: [
+        "Voce confere fotos do interior de maquinas de pelucia (grua/garra) depois do abastecimento.",
+        "Retorne apenas JSON conforme o schema.",
+        "Verifique se as pelucias visiveis estao com o rosto (olhos, focinho) virado para frente, para quem olha a maquina.",
+        "Pelucia de costas, de lado ou de cabeca para baixo conta como fora de posicao.",
+        "Se nao der para ver pelucias (foto escura, borrada, sem pelucias), temPelucias false e explique na mensagem.",
+        "mensagem: frase curta em portugues para o funcionario. Se houver pelucias fora de posicao, diga para vira-las de frente e onde estao (ex.: canto esquerdo, fundo).",
+        "Se estiver tudo certo, mensagem curta de confirmacao.",
+      ].join("\n"),
+      input: [
+        {
+          role: "user",
+          content: [
+            { type: "input_text", text: "As pelucias desta maquina estao todas com o rosto virado para frente?" },
+            { type: "input_image", image_url: imagemUrl },
+          ],
+        },
+      ],
+      text: {
+        format: {
+          type: "json_schema",
+          name: "foto_pelucias",
+          strict: true,
+          schema: schemaFotoPelucias,
+        },
+      },
+      max_output_tokens: 300,
+    }),
+  });
+
+  const payload = await resposta.json().catch(() => ({}));
+  if (!resposta.ok) {
+    const erro = new Error(payload?.error?.message || "Falha ao analisar a foto com OpenAI");
+    erro.status = resposta.status;
+    throw erro;
+  }
+  const textoJson = extrairTextoResposta(payload);
+  if (!textoJson) {
+    const erro = new Error("OpenAI nao retornou uma analise valida");
+    erro.status = 502;
+    throw erro;
+  }
+  return JSON.parse(textoJson);
+};
