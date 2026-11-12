@@ -160,8 +160,15 @@ export const CATALOGO = [
       {
         chave: "maquinas.editar",
         nome: "Editar máquina",
-        rotas: ["PUT /api/maquinas/:id", "PATCH /api/maquinas/:id/quantidade"],
+        rotas: ["PUT /api/maquinas/:id"],
         telas: ["/maquinas/:id/editar"],
+        requer: ["maquinas.ver"],
+      },
+      {
+        chave: "maquinas.ajustarQuantidade",
+        nome: "Editar capacidade padrão e quantidade de pelúcias da máquina (ajuste)",
+        somenteAdmin: true,
+        rotas: ["PATCH /api/maquinas/:id/quantidade"],
         requer: ["maquinas.ver"],
       },
       {

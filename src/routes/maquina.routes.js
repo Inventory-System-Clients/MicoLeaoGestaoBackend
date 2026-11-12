@@ -47,11 +47,12 @@ router.put(
   registrarLog("EDITAR_MAQUINA", "Maquina"),
   atualizarMaquina,
 );
-// Ajuste rápido de capacidade padrão / quantidade atual (Visão de Máquinas)
+// Ajuste rápido de capacidade padrão / quantidade atual (Visão de Máquinas).
+// Só o admin: os outros só mexem na quantidade pela movimentação (retirada).
 router.patch(
   "/:id/quantidade",
   autenticar,
-  autorizarRole("ADMIN", "FUNCIONARIO_CADASTRO"),
+  autorizarRole("ADMIN"),
   registrarLog("AJUSTAR_QUANTIDADE_MAQUINA", "Maquina"),
   ajustarQuantidade,
 );
