@@ -65,6 +65,8 @@ import LocalPonto from "./LocalPonto.js";
 import MetaLoja from "./MetaLoja.js";
 import ComissaoMeta from "./ComissaoMeta.js";
 import LancamentoMeta from "./LancamentoMeta.js";
+import Tarefa from "./Tarefa.js";
+import PeriodoCalendario from "./PeriodoCalendario.js";
 // MovimentaÃ§Ã£o de VeÃ­culo -> VeÃ­culo e UsuÃ¡rio
 MovimentacaoVeiculo.belongsTo(Veiculo, {
   as: "veiculo",
@@ -530,6 +532,13 @@ ComissaoMeta.belongsTo(MetaLoja, { foreignKey: "metaId", as: "meta" });
 ComissaoMeta.belongsTo(Usuario, { foreignKey: "usuarioId", as: "usuario" });
 LancamentoMeta.belongsTo(Loja, { foreignKey: "lojaId", as: "loja" });
 LancamentoMeta.belongsTo(Usuario, { foreignKey: "criadoPorId", as: "criadoPor" });
+
+// Tarefas e calendário
+Tarefa.belongsTo(Usuario, { foreignKey: "criadoPorId", as: "criadoPor" });
+Tarefa.belongsTo(Usuario, { foreignKey: "responsavelId", as: "responsavel" });
+Tarefa.belongsTo(Usuario, { foreignKey: "feitaPorId", as: "feitaPor" });
+Tarefa.belongsTo(Loja, { foreignKey: "lojaId", as: "loja" });
+PeriodoCalendario.belongsTo(Usuario, { foreignKey: "criadoPorId", as: "criadoPor" });
 PedidoPelucia.belongsTo(Usuario, {
   foreignKey: "criadoPorId",
   as: "criadoPor",
@@ -825,5 +834,6 @@ export {
   MetaLoja,
   ComissaoMeta,
   LancamentoMeta,
+  Tarefa,
+  PeriodoCalendario,
 };
-

@@ -8,6 +8,7 @@ import { fileURLToPath } from "url";
 import { sequelize } from "./database/connection.js";
 import routes from "./routes/index.js";
 import { agendarSincronizacaoDeRotas } from "./controllers/roteiroController.js";
+import { agendarTarefasAutomaticas } from "./controllers/tarefaController.js";
 
 dotenv.config();
 
@@ -134,6 +135,8 @@ const startServer = async () => {
     await sequelize.sync();
     console.log("✅ Database sincronizado!");
     agendarSincronizacaoDeRotas();
+    // Extintor e contrato vencendo viram tarefa (Análise > Tarefas)
+    agendarTarefasAutomaticas();
 
     const queryInterface = sequelize.getQueryInterface();
 

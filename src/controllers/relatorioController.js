@@ -906,7 +906,8 @@ export const alertasMaquinaParada = async (req, res) => {
   }
 };
 
-const DIAS_ANTECEDENCIA_EXTINTOR = 30;
+// Também usado pelas tarefas automáticas (tarefaController)
+export const DIAS_ANTECEDENCIA_EXTINTOR = 30;
 
 // --- ALERTA: EXTINTOR VENCENDO ---
 export const alertasExtintor = async (req, res) => {
@@ -960,7 +961,7 @@ export const alertasExtintor = async (req, res) => {
   }
 };
 
-const DIAS_ANTECEDENCIA_CONTRATO_DEFAULT = 60;
+export const DIAS_ANTECEDENCIA_CONTRATO_DEFAULT = 60;
 
 // --- ALERTA: CONTRATO VENCENDO ---
 export const alertasContrato = async (req, res) => {

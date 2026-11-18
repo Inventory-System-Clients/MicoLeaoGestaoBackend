@@ -46,6 +46,8 @@ import tipoMaquinaRoutes from "./tipoMaquina.routes.js";
 import projetoLojaRoutes from "./projetoLoja.routes.js";
 import cotacaoMoedaRoutes from "./cotacaoMoeda.routes.js";
 import permissoesRoutes from "./permissoes.routes.js";
+import tarefaRoutes from "./tarefa.routes.js";
+import calendarioRoutes from "./calendario.routes.js";
 import { bloquearSeModoSegurancaAtivo } from "../middlewares/modoSeguranca.js";
 const router = express.Router();
 
@@ -103,5 +105,7 @@ router.use("/permissoes", permissoesRoutes);
 router.use("/ponto", pontoRoutes);
 router.use("/metas", metaRoutes);
 router.use("/visitas", visitaRoutes);
+router.use("/tarefas", tarefaRoutes);
+router.use("/calendario", calendarioRoutes);
 
 export default router;

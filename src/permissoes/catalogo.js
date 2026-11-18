@@ -1185,6 +1185,40 @@ export const CATALOGO = [
     ],
   },
   {
+    area: "tarefas",
+    nome: "Tarefas e calendário",
+    acoes: [
+      {
+        chave: "tarefas.minhas",
+        nome: "Tarefas: criar, ver as suas, aceitar, recusar e marcar feito",
+        rotas: [
+          "GET /api/tarefas",
+          "GET /api/tarefas/opcoes",
+          "POST /api/tarefas",
+          "PUT /api/tarefas/:id",
+          "POST /api/tarefas/:id/aceitar",
+          "POST /api/tarefas/:id/recusar",
+          "POST /api/tarefas/:id/feito",
+          "POST /api/tarefas/:id/cancelar",
+        ],
+        telas: ["/tarefas"],
+      },
+      {
+        chave: "tarefas.gerenciar",
+        nome: "Calendário, todas as tarefas (escolher responsável, marcar feito) e relatório de tarefas",
+        rotas: [
+          "GET /api/tarefas/relatorio",
+          "GET /api/calendario",
+          "POST /api/calendario/periodos",
+          "PUT /api/calendario/periodos/:id",
+          "DELETE /api/calendario/periodos/:id",
+        ],
+        telas: ["/calendario"],
+        requer: ["tarefas.minhas"],
+      },
+    ],
+  },
+  {
     area: "usuarios",
     nome: "Usuários",
     acoes: [

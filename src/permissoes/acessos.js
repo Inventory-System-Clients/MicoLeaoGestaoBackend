@@ -19,18 +19,28 @@ const MANUTENCAO_BASICA = [
   "manutencao.registrarPecaQuebrada",
 ];
 
+// Todo mundo vê e trabalha nas próprias tarefas (Análise > Tarefas)
+const TAREFAS = ["tarefas.minhas"];
+
+// A movimentação em passos (Operacional > Movimentação, "visitas.registrar")
+// é de todos os perfis, menos Motorista e Financeiro; nas lojas marcadas no
+// cadastro ou em todas (lojas.todas)
 export const PADRAO_PERFIS_RESTRITOS = {
-  CONSULTOR_VENDAS: ["ponto.bater", "metas.minhas", "visitas.registrar", ...MANUTENCAO_BASICA],
+  CONSULTOR_VENDAS: ["ponto.bater", "metas.minhas", "visitas.registrar", ...MANUTENCAO_BASICA, ...TAREFAS],
   // Faz as rotas dele: inicia, entrega nas paradas e finaliza devolvendo o veículo
-  MOTORISTA: ["ponto.bater", "metas.minhas", "roteiros.ver", "roteiros.executar", ...MANUTENCAO_BASICA],
+  MOTORISTA: ["ponto.bater", "metas.minhas", "roteiros.ver", "roteiros.executar", ...MANUTENCAO_BASICA, ...TAREFAS],
   // Mesmo trabalho do Consultor (ponto + movimentação nas lojas dele), sem metas
-  ABASTECEDOR: ["ponto.bater", "visitas.registrar", ...MANUTENCAO_BASICA],
+  ABASTECEDOR: ["ponto.bater", "visitas.registrar", ...MANUTENCAO_BASICA, ...TAREFAS],
   // Começa só com as metas por loja; os outros acessos vêm depois
-  FINANCEIRO: ["ponto.bater", "metas.minhas", "metas.gerenciar", ...MANUTENCAO_BASICA],
-  // Cria e acompanha as rotas, vê os envios e acompanha as metas por loja
+  FINANCEIRO: ["ponto.bater", "metas.minhas", "metas.gerenciar", ...MANUTENCAO_BASICA, ...TAREFAS],
+  // Cria e acompanha as rotas, vê os envios e acompanha as metas por loja.
+  // Trabalha em todas as lojas (movimentação e lacre)
   GERENTE_VENDAS: [
     "ponto.bater",
+    "visitas.registrar",
+    "lojas.todas",
     ...MANUTENCAO_BASICA,
+    ...TAREFAS,
     "roteiros.ver",
     "roteiros.verTodos",
     "roteiros.criar",

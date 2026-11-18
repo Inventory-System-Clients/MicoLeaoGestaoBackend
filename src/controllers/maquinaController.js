@@ -489,50 +489,50 @@ export const obterEstoqueAtual = async (req, res) => {
   }
 };
 
-// Transferir máquina para outra loja (ou para o depósito) sem criar um novo cadastro
-export const transferirMaquina = async (req, res) => {
+const erroDeTransferencia = (status, mensagem) =>
+  Object.assign(new Error(mensagem), { status });
+
+// Transferência em si (usada pela rota abaixo e pela tarefa agendada
+// "Transferir máquina", no "Feito"). Lança erro com `status` 400/404.
+export const executarTransferenciaMaquina = async ({
+  maquinaId,
+  lojaDestinoId,
+  dataTransferencia,
+  observacao,
+  usuarioId,
+}) => {
+  if (!dataTransferencia || !/^\d{4}-\d{2}-\d{2}$/.test(dataTransferencia)) {
+    throw erroDeTransferencia(400, "Informe a data da transferência");
+  }
+
   const transaction = await sequelize.transaction();
+  let transferencia;
+  let maquina;
+  let lojaOrigemId;
+  const lojaDestinoNormalizada = lojaDestinoId || null;
 
   try {
-    const { id } = req.params;
-    const { lojaDestinoId, dataTransferencia, observacao } = req.body;
-
-    const maquina = await Maquina.findByPk(id, { transaction });
-    if (!maquina) {
-      await transaction.rollback();
-      return res.status(404).json({ error: "Máquina não encontrada" });
-    }
-
-    if (!dataTransferencia || !/^\d{4}-\d{2}-\d{2}$/.test(dataTransferencia)) {
-      await transaction.rollback();
-      return res
-        .status(400)
-        .json({ error: "Informe a data da transferência" });
-    }
-
-    const lojaDestinoNormalizada = lojaDestinoId || null;
+    maquina = await Maquina.findByPk(maquinaId, { transaction });
+    if (!maquina) throw erroDeTransferencia(404, "Máquina não encontrada");
 
     if (lojaDestinoNormalizada) {
       const lojaDestino = await Loja.findByPk(lojaDestinoNormalizada, {
         transaction,
       });
       if (!lojaDestino) {
-        await transaction.rollback();
-        return res
-          .status(400)
-          .json({ error: "Loja de destino não encontrada" });
+        throw erroDeTransferencia(400, "Loja de destino não encontrada");
       }
     }
 
-    const lojaOrigemId = maquina.lojaId || null;
+    lojaOrigemId = maquina.lojaId || null;
 
     if (lojaOrigemId === lojaDestinoNormalizada) {
-      await transaction.rollback();
-      return res.status(400).json({
-        error: lojaDestinoNormalizada
+      throw erroDeTransferencia(
+        400,
+        lojaDestinoNormalizada
           ? "A máquina já está nessa loja"
           : "A máquina já está no depósito",
-      });
+      );
     }
 
     const statusFinal = lojaDestinoNormalizada ? "EM_OPERACAO" : "PARADA";
@@ -549,33 +549,51 @@ export const transferirMaquina = async (req, res) => {
       { transaction },
     );
 
-    const transferencia = await TransferenciaMaquina.create(
+    transferencia = await TransferenciaMaquina.create(
       {
         maquinaId: maquina.id,
         lojaOrigemId,
         lojaDestinoId: lojaDestinoNormalizada,
         dataTransferencia,
-        usuarioId: req.usuario.id,
+        usuarioId,
         observacao: observacao?.trim() || null,
       },
       { transaction },
     );
 
     await transaction.commit();
-
-    // Registra a entrada/saída nos projetos abertos das duas lojas
-    await sincronizarProjetosDaMaquina(maquina.id, [lojaOrigemId, lojaDestinoNormalizada]);
-
-    const maquinaAtualizada = await Maquina.findByPk(maquina.id, {
-      include: [
-        { model: Loja, as: "loja", attributes: ["id", "nome", "cidade"] },
-      ],
-    });
-
-    res.locals.entityId = maquina.id;
-    res.json({ maquina: maquinaAtualizada, transferencia });
   } catch (error) {
     await transaction.rollback();
+    throw error;
+  }
+
+  // Registra a entrada/saída nos projetos abertos das duas lojas
+  await sincronizarProjetosDaMaquina(maquina.id, [lojaOrigemId, lojaDestinoNormalizada]);
+
+  const maquinaAtualizada = await Maquina.findByPk(maquina.id, {
+    include: [
+      { model: Loja, as: "loja", attributes: ["id", "nome", "cidade"] },
+    ],
+  });
+
+  return { maquina: maquinaAtualizada, transferencia };
+};
+
+// Transferir máquina para outra loja (ou para o depósito) sem criar um novo cadastro
+export const transferirMaquina = async (req, res) => {
+  try {
+    const { lojaDestinoId, dataTransferencia, observacao } = req.body;
+    const resultado = await executarTransferenciaMaquina({
+      maquinaId: req.params.id,
+      lojaDestinoId,
+      dataTransferencia,
+      observacao,
+      usuarioId: req.usuario.id,
+    });
+    res.locals.entityId = resultado.maquina.id;
+    res.json(resultado);
+  } catch (error) {
+    if (error.status) return res.status(error.status).json({ error: error.message });
     console.error("Erro ao transferir máquina:", error);
     res.status(500).json({ error: "Erro ao transferir máquina" });
   }
