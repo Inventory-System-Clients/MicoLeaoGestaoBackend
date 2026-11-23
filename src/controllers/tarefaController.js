@@ -54,22 +54,54 @@ const registro = (usuario, acao, detalhe) => ({
 
 const comHistorico = (tarefa, ...entradas) => [...(tarefa.historico || []), ...entradas];
 
+// Prazo da tarefa: o último dia do período (ou o dia, se for de um dia só)
+export const prazoDaTarefa = (tarefa) => tarefa.dataFim || tarefa.data;
+
+// Tarefas que caem (ao menos um dia) entre inicio e fim
+export const filtroPeriodoTarefa = (inicio, fim) => {
+  const condicoes = [];
+  if (fim) condicoes.push({ data: { [Op.lte]: fim } });
+  if (inicio) {
+    condicoes.push({
+      [Op.or]: [
+        { dataFim: { [Op.gte]: inicio } },
+        { dataFim: null, data: { [Op.gte]: inicio } },
+      ],
+    });
+  }
+  return condicoes;
+};
+
+const lerDataFim = (data, dataFim) => {
+  if (!dataFim || dataFim === data) return null;
+  if (!DATA_VALIDA.test(dataFim)) throw erroTarefa(400, "Escolha o último dia da tarefa.");
+  if (dataFim < data) throw erroTarefa(400, "O último dia não pode ser antes do primeiro.");
+  return dataFim;
+};
+
+const textoDias = (data, dataFim) => (dataFim ? `${dataBr(data)} a ${dataBr(dataFim)}` : dataBr(data));
+
 const formatar = (tarefa, usuario) => {
   const json = tarefa.toJSON();
   const gestor = ehGestorDeTarefas(usuario);
   const souResponsavel = json.responsavelId === usuario.id;
   const souCriador = json.criadoPorId === usuario.id;
+  const semResponsavel = !json.responsavelId;
   const acao = ACOES_TAREFA[json.tipo] || ACOES_TAREFA.LIVRE;
   return {
     ...json,
     codigo: tarefa.codigo,
     tipoNome: acao.nome,
     pedeNoFeito: acao.pedeNoFeito || null,
-    atrasada: ABERTAS.includes(json.status) && json.data < hojeBrasilia(),
+    atrasada: ABERTAS.includes(json.status) && prazoDaTarefa(json) < hojeBrasilia(),
     pode: {
-      aceitar: json.status === "PENDENTE" && (souResponsavel || (gestor && !json.responsavelId)),
+      // Sem responsável: quem criou (ou o admin) pega para si
+      aceitar: json.status === "PENDENTE" && (souResponsavel || (semResponsavel && (gestor || souCriador))),
       recusar: ["PENDENTE", "ACEITA"].includes(json.status) && souResponsavel,
-      feito: (json.status === "ACEITA" && souResponsavel) || (gestor && ["PENDENTE", "ACEITA", "RECUSADA"].includes(json.status)),
+      feito:
+        (json.status === "ACEITA" && souResponsavel) ||
+        (semResponsavel && souCriador && json.status === "PENDENTE") ||
+        (gestor && ["PENDENTE", "ACEITA", "RECUSADA"].includes(json.status)),
       editar: ABERTAS.includes(json.status) && (souCriador || gestor),
       cancelar: ABERTAS.includes(json.status) && (souCriador || gestor),
     },
@@ -204,11 +236,11 @@ const tarefaController = {
       }
       if (status === "abertas") where.status = { [Op.in]: ABERTAS };
       else if (status) where.status = status;
-      if (DATA_VALIDA.test(inicio || "") || DATA_VALIDA.test(fim || "")) {
-        where.data = {};
-        if (DATA_VALIDA.test(inicio || "")) where.data[Op.gte] = inicio;
-        if (DATA_VALIDA.test(fim || "")) where.data[Op.lte] = fim;
-      }
+      const periodo = filtroPeriodoTarefa(
+        DATA_VALIDA.test(inicio || "") ? inicio : null,
+        DATA_VALIDA.test(fim || "") ? fim : null,
+      );
+      if (periodo.length) where[Op.and] = periodo;
 
       const tarefas = await Tarefa.findAll({
         where,
@@ -276,25 +308,30 @@ const tarefaController = {
   async criar(req, res) {
     try {
       const usuario = req.usuario;
-      const { titulo, descricao, tipo = "LIVRE", dados = {}, data, responsavelId } = req.body;
+      const { titulo, descricao, tipo = "LIVRE", dados = {}, data, dataFim, responsavelId } = req.body;
 
       if (!TIPOS_TAREFA.includes(tipo)) throw erroTarefa(400, "Tipo de tarefa inválido.");
       if (!DATA_VALIDA.test(data || "")) throw erroTarefa(400, "Escolha o dia da tarefa.");
+      const ultimoDia = lerDataFim(data, dataFim);
       const acao = ACOES_TAREFA[tipo];
       if (acao.rota && !podeUsarRota(usuario, acao.rota)) {
         throw erroTarefa(403, `Você não tem acesso para agendar "${acao.nome}".`);
       }
+      // Vazio = não é para alguém em especial
       const responsavel = await buscarResponsavel(responsavelId);
-      if (!responsavel) throw erroTarefa(400, "Escolha para quem é a tarefa.");
 
       const preparada = await acao.preparar(dados || {});
       const tituloFinal = String(titulo || "").trim() || preparada.titulo;
       if (!tituloFinal) throw erroTarefa(400, "Escreva o que precisa ser feito.");
 
       // Tarefa para si mesmo já nasce aceita
-      const paraMim = responsavel.id === usuario.id;
+      const paraMim = responsavel?.id === usuario.id;
       const historico = [
-        registro(usuario, "CRIADA", `Para ${responsavel.nome}`),
+        registro(
+          usuario,
+          "CRIADA",
+          `${responsavel ? `Para ${responsavel.nome}` : "Sem responsável"} · ${textoDias(data, ultimoDia)}`,
+        ),
         ...(paraMim ? [registro(usuario, "ACEITA")] : []),
       ];
 
@@ -304,9 +341,10 @@ const tarefaController = {
         tipo,
         dados: preparada.dados,
         data,
+        dataFim: ultimoDia,
         lojaId: preparada.lojaId,
         criadoPorId: usuario.id,
-        responsavelId: responsavel.id,
+        responsavelId: responsavel?.id || null,
         status: paraMim ? "ACEITA" : "PENDENTE",
         aceitaEm: paraMim ? new Date() : null,
         historico,
@@ -324,7 +362,7 @@ const tarefaController = {
       const tarefa = await carregarTarefa(req.params.id);
       if (!formatar(tarefa, usuario).pode.editar) throw erroTarefa(403, "Você não pode editar esta tarefa.");
 
-      const { titulo, descricao, data, responsavelId } = req.body;
+      const { titulo, descricao, data, dataFim, responsavelId } = req.body;
       const mudancas = {};
       const detalhes = [];
 
@@ -334,22 +372,27 @@ const tarefaController = {
         mudancas.titulo = novo.slice(0, 200);
       }
       if (descricao !== undefined) mudancas.descricao = String(descricao || "").trim() || null;
-      if (data !== undefined && data !== tarefa.data) {
-        if (!DATA_VALIDA.test(data || "")) throw erroTarefa(400, "Escolha o dia da tarefa.");
-        mudancas.data = data;
-        detalhes.push(`dia ${dataBr(tarefa.data)} → ${dataBr(data)}`);
+      if (data !== undefined || dataFim !== undefined) {
+        const novoInicio = data !== undefined ? data : tarefa.data;
+        if (!DATA_VALIDA.test(novoInicio || "")) throw erroTarefa(400, "Escolha o dia da tarefa.");
+        const novoFim = lerDataFim(novoInicio, dataFim !== undefined ? dataFim : tarefa.dataFim);
+        if (novoInicio !== tarefa.data || (novoFim || null) !== (tarefa.dataFim || null)) {
+          mudancas.data = novoInicio;
+          mudancas.dataFim = novoFim;
+          detalhes.push(`dia ${textoDias(tarefa.data, tarefa.dataFim)} → ${textoDias(novoInicio, novoFim)}`);
+        }
       }
-      if (responsavelId !== undefined && responsavelId !== tarefa.responsavelId) {
-        const responsavel = await buscarResponsavel(responsavelId);
-        if (!responsavel) throw erroTarefa(400, "Escolha para quem é a tarefa.");
-        const paraMim = responsavel.id === usuario.id;
+      const novoResponsavelId = responsavelId === undefined ? undefined : responsavelId || null;
+      if (novoResponsavelId !== undefined && novoResponsavelId !== (tarefa.responsavelId || null)) {
+        const responsavel = await buscarResponsavel(novoResponsavelId);
+        const paraMim = responsavel?.id === usuario.id;
         Object.assign(mudancas, {
-          responsavelId: responsavel.id,
+          responsavelId: responsavel?.id || null,
           status: paraMim ? "ACEITA" : "PENDENTE",
           aceitaEm: paraMim ? new Date() : null,
           motivoRecusa: null,
         });
-        detalhes.push(`agora é para ${responsavel.nome}`);
+        detalhes.push(responsavel ? `agora é para ${responsavel.nome}` : "agora sem responsável");
       }
 
       if (Object.keys(mudancas).length === 0) return res.json(formatar(tarefa, usuario));
@@ -470,7 +513,7 @@ const tarefaController = {
       if (!DATA_VALIDA.test(dataInicio || "") || !DATA_VALIDA.test(dataFim || "")) {
         throw erroTarefa(400, "Informe o período.");
       }
-      const where = { data: { [Op.between]: [dataInicio, dataFim] } };
+      const where = { [Op.and]: filtroPeriodoTarefa(dataInicio, dataFim) };
       if (lojaId && lojaId !== "todas") where.lojaId = lojaId;
 
       const tarefas = (
@@ -480,7 +523,7 @@ const tarefaController = {
       const contar = (lista) => ({
         total: lista.length,
         feitas: lista.filter((t) => t.status === "FEITA").length,
-        noPrazo: lista.filter((t) => t.status === "FEITA" && t.feitaEm && new Date(t.feitaEm).toISOString().slice(0, 10) <= t.data).length,
+        noPrazo: lista.filter((t) => t.status === "FEITA" && t.feitaEm && new Date(t.feitaEm).toISOString().slice(0, 10) <= prazoDaTarefa(t)).length,
         abertas: lista.filter((t) => ABERTAS.includes(t.status)).length,
         atrasadas: lista.filter((t) => t.atrasada).length,
         recusadas: lista.filter((t) => t.status === "RECUSADA").length,

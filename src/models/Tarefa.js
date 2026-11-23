@@ -9,7 +9,9 @@ import { sequelize } from "../database/connection.js";
 // Status: PENDENTE (esperando o responsável aceitar) -> ACEITA -> FEITA.
 // O responsável pode recusar (RECUSADA); quem criou ou o admin pode cancelar
 // (CANCELADA). Tarefas automáticas (extintor e contrato vencendo) nascem sem
-// responsável; o admin escolhe quem faz.
+// responsável; o admin escolhe quem faz. Tarefa manual também pode ficar sem
+// responsável (não é para alguém em especial): quem criou ou o admin pega
+// para si, escolhe alguém depois ou marca Feito direto.
 const Tarefa = sequelize.define(
   "Tarefa",
   {
@@ -50,7 +52,14 @@ const Tarefa = sequelize.define(
     data: {
       type: DataTypes.DATEONLY,
       allowNull: false,
-      comment: "Dia em que a tarefa deve ser feita",
+      comment: "Dia em que a tarefa deve ser feita (ou o 1º dia, se tiver dataFim)",
+    },
+    // Tarefa de período (ex.: decoração de Natal de 01/12 a 31/12). Vazio =
+    // tarefa de um dia só. O prazo (atrasada) passa a ser o último dia.
+    dataFim: {
+      type: DataTypes.DATEONLY,
+      allowNull: true,
+      field: "data_fim",
     },
     lojaId: {
       type: DataTypes.UUID,

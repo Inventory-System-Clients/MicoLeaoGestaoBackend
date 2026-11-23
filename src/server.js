@@ -163,6 +163,13 @@ const startServer = async () => {
         console.log("✅ Coluna jornada_diaria_minutos adicionada aos usuários!");
       }
 
+      // Tarefa de período (de um dia até outro)
+      const colunasTarefas = await queryInterface.describeTable("tarefas");
+      if (!colunasTarefas.data_fim) {
+        await queryInterface.addColumn("tarefas", "data_fim", { type: DataTypes.DATEONLY, allowNull: true });
+        console.log("✅ Coluna data_fim adicionada às tarefas!");
+      }
+
       // Rotas do motorista (roteiros com início/fim) e envio ligado à rota
       const colunasRoteirosRota = await queryInterface.describeTable("roteiros");
       const novasRoteiros = [

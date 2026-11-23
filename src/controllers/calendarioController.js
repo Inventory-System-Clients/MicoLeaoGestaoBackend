@@ -15,7 +15,7 @@ import {
   Compra,
   Fornecedor,
 } from "../models/index.js";
-import { sincronizarTarefasAutomaticas } from "./tarefaController.js";
+import { sincronizarTarefasAutomaticas, filtroPeriodoTarefa, prazoDaTarefa } from "./tarefaController.js";
 import { hojeBrasilia } from "../services/tarefaAcoes.js";
 
 // Calendário (Análise > Calendário, admin): junta tudo o que tem data no
@@ -83,7 +83,7 @@ const calendarioController = {
         compras,
       ] = await Promise.all([
         Tarefa.findAll({
-          where: { data: entre, status: { [Op.ne]: "CANCELADA" } },
+          where: { [Op.and]: filtroPeriodoTarefa(inicio, fim), status: { [Op.ne]: "CANCELADA" } },
           include: [
             { model: Usuario, as: "responsavel", attributes: ["id", "nome"] },
             { model: Usuario, as: "criadoPor", attributes: ["id", "nome"] },
@@ -148,8 +148,9 @@ const calendarioController = {
           titulo: `${tarefa.codigo} · ${tarefa.titulo}`,
           detalhe: `${tarefa.responsavel ? `Para ${tarefa.responsavel.nome}` : "Sem responsável"} · ${STATUS_TAREFA[tarefa.status] || tarefa.status}`,
           data: tarefa.data,
+          dataFim: tarefa.dataFim || undefined,
           status: tarefa.status,
-          atrasada: ["PENDENTE", "ACEITA", "RECUSADA"].includes(tarefa.status) && tarefa.data < hoje,
+          atrasada: ["PENDENTE", "ACEITA", "RECUSADA"].includes(tarefa.status) && prazoDaTarefa(tarefa) < hoje,
           tarefaId: tarefa.id,
           link: "/tarefas",
         })),
