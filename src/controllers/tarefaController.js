@@ -263,7 +263,7 @@ const tarefaController = {
 
       const [usuarios, lojas, maquinas, contas, extintores] = await Promise.all([
         Usuario.findAll({ where: { ativo: true }, attributes: USUARIO_ATTRS, order: [["nome", "ASC"]] }),
-        Loja.findAll({ where: { ativo: true }, attributes: ["id", "nome", "dataFimContrato"], order: [["nome", "ASC"]] }),
+        Loja.findAll({ where: { ativo: true }, attributes: ["id", "nome", "tipo", "dataFimContrato"], order: [["nome", "ASC"]] }),
         precisaMaquinas
           ? Maquina.findAll({
               where: { ativo: true },

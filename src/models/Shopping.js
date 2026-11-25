@@ -1,9 +1,9 @@
 import { DataTypes } from "sequelize";
 import { sequelize } from "../database/connection.js";
 
-// Shopping: agrupa lojas (Loja.shoppingId) e máquinas avulsas, que ficam no
-// shopping sem loja (Maquina.shoppingId com lojaId vazio). Loja de rua fica
-// sem shopping.
+// Shopping: agrupa lojas e máquinas avulsas (Loja.shoppingId). Máquina
+// avulsa é um ponto (Loja com tipo AVULSA) de uma máquina só, solto no
+// shopping. Loja de rua fica sem shopping.
 const Shopping = sequelize.define(
   "Shopping",
   {

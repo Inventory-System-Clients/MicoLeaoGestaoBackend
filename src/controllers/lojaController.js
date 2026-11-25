@@ -14,6 +14,21 @@ const ehDepositoPrincipal = (loja) =>
 
 const VALOR_FICHA_PADRAO_DEFAULT = 2.5;
 
+// Máquina avulsa: ponto de uma máquina só, solto no shopping
+const TIPOS_PONTO = ["LOJA", "AVULSA"];
+const validarTipoPonto = async ({ tipo, shoppingId, lojaId }) => {
+  if (!TIPOS_PONTO.includes(tipo)) return "Tipo inválido (LOJA ou AVULSA)";
+  if (tipo !== "AVULSA") return null;
+  if (!shoppingId) return "Máquina avulsa precisa estar dentro de um shopping";
+  if (lojaId) {
+    const maquinas = await Maquina.count({ where: { lojaId, ativo: true } });
+    if (maquinas > 1) {
+      return `Este ponto tem ${maquinas} máquinas. Máquina avulsa tem uma máquina só: transfira as outras antes.`;
+    }
+  }
+  return null;
+};
+
 const normalizarValorFichaPadrao = (valor) => {
   if (valor === undefined || valor === null || valor === "") {
     return { informado: false, valor: undefined };
@@ -141,11 +156,14 @@ export const criarLoja = async (req, res) => {
       valorFichaPadrao,
       projetoEmImplantacao,
       shoppingId,
+      tipo = "LOJA",
     } = req.body;
 
     if (!nome) {
       return res.status(400).json({ error: "Nome da loja é obrigatório" });
     }
+    const erroTipo = await validarTipoPonto({ tipo, shoppingId });
+    if (erroTipo) return res.status(400).json({ error: erroTipo });
 
     const valorFichaNormalizado = normalizarValorFichaPadrao(valorFichaPadrao);
     if (valorFichaNormalizado.invalido) {
@@ -167,6 +185,7 @@ export const criarLoja = async (req, res) => {
       dataInicio: dataInicio || null,
       observacoes: observacoes || null,
       shoppingId: shoppingId || null,
+      tipo,
       dataFimContrato: dataFimContrato || null,
       diasAvisoContrato:
         diasAvisoContrato !== undefined && diasAvisoContrato !== null && diasAvisoContrato !== ""
@@ -216,7 +235,13 @@ export const atualizarLoja = async (req, res) => {
       ativo,
       valorFichaPadrao,
       shoppingId,
+      tipo,
     } = req.body;
+
+    const tipoFinal = tipo ?? loja.tipo ?? "LOJA";
+    const shoppingFinal = shoppingId !== undefined ? shoppingId || null : loja.shoppingId;
+    const erroTipo = await validarTipoPonto({ tipo: tipoFinal, shoppingId: shoppingFinal, lojaId: loja.id });
+    if (erroTipo) return res.status(400).json({ error: erroTipo });
 
     // Se a data de fim do contrato mudou (renovação), zera qualquer "adiar"
     // que tivesse sido configurado pro contrato anterior.
@@ -262,7 +287,8 @@ export const atualizarLoja = async (req, res) => {
       dataInicio: dataInicio ?? loja.dataInicio,
       observacoes: observacoes ?? loja.observacoes,
       // "" tira do shopping (loja de rua)
-      shoppingId: shoppingId !== undefined ? shoppingId || null : loja.shoppingId,
+      shoppingId: shoppingFinal,
+      tipo: tipoFinal,
       dataFimContrato: dataFimContrato ?? loja.dataFimContrato,
       diasAvisoContrato: diasAvisoContrato ?? loja.diasAvisoContrato,
       contratoAvisoAdiadoDias: contratoMudou

@@ -98,11 +98,9 @@ Usuario.hasMany(MovimentacaoEstoqueLoja, {
 Loja.hasMany(Maquina, { foreignKey: "lojaId", as: "maquinas" });
 Maquina.belongsTo(Loja, { foreignKey: "lojaId", as: "loja" });
 
-// Shopping -> lojas e máquinas avulsas (máquina no shopping sem loja)
+// Shopping -> lojas e máquinas avulsas (Loja com tipo AVULSA)
 Shopping.hasMany(Loja, { foreignKey: "shoppingId", as: "lojas" });
 Loja.belongsTo(Shopping, { foreignKey: "shoppingId", as: "shopping" });
-Shopping.hasMany(Maquina, { foreignKey: "shoppingId", as: "maquinasAvulsas" });
-Maquina.belongsTo(Shopping, { foreignKey: "shoppingId", as: "shopping" });
 
 // MÃ¡quina -> MovimentaÃ§Ãµes
 Maquina.hasMany(Movimentacao, { foreignKey: "maquinaId", as: "movimentacoes" });

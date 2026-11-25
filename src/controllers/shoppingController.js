@@ -2,7 +2,7 @@ import { Shopping, Loja, Maquina } from "../models/index.js";
 import { whereSemLojaDeProjeto } from "../utils/lojaProjeto.js";
 
 // Shoppings (Cadastros > Shoppings): agrupam lojas e máquinas avulsas
-// (máquina no shopping sem loja).
+// (Loja com tipo AVULSA: ponto de uma máquina só, solto no shopping).
 
 const CAMPOS = ["nome", "endereco", "cidade", "estado", "observacoes"];
 
@@ -21,15 +21,17 @@ const incluirConteudo = [
   {
     model: Loja,
     as: "lojas",
-    attributes: ["id", "nome", "ativo"],
+    attributes: ["id", "nome", "ativo", "tipo"],
     where: whereSemLojaDeProjeto,
     required: false,
-  },
-  {
-    model: Maquina,
-    as: "maquinasAvulsas",
-    attributes: ["id", "codigo", "nome", "ativo", "statusOperacao"],
-    required: false,
+    include: [
+      {
+        model: Maquina,
+        as: "maquinas",
+        attributes: ["id", "codigo", "nome", "ativo", "statusOperacao"],
+        required: false,
+      },
+    ],
   },
 ];
 
@@ -100,13 +102,10 @@ export const deletarShopping = async (req, res) => {
       return res.json({ message: "Shopping desativado" });
     }
 
-    const [lojas, maquinas] = await Promise.all([
-      Loja.count({ where: { shoppingId: shopping.id } }),
-      Maquina.count({ where: { shoppingId: shopping.id } }),
-    ]);
-    if (lojas || maquinas) {
+    const pontos = await Loja.count({ where: { shoppingId: shopping.id } });
+    if (pontos) {
       return res.status(400).json({
-        error: `Tire as ${lojas} loja(s) e ${maquinas} máquina(s) avulsa(s) deste shopping antes de excluir.`,
+        error: `Este shopping ainda tem ${pontos} loja(s)/máquina(s) avulsa(s). Tire do shopping antes de excluir.`,
       });
     }
     await shopping.destroy();

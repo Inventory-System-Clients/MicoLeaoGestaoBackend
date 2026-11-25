@@ -1,3 +1,4 @@
+import { Op } from "sequelize";
 import {
   Maquina,
   Loja,
@@ -9,6 +10,21 @@ import { sequelize } from "../database/connection.js";
 import { sincronizarProjetosDaMaquina } from "../services/projetoLojaMaquinas.js";
 
 const normalizarLojaId = (lojaId) => (lojaId ? lojaId : null);
+
+// Máquina avulsa (Loja tipo AVULSA) é ponto de uma máquina só
+const erroAvulsaOcupada = async (lojaId, maquinaId, transaction) => {
+  if (!lojaId) return null;
+  const loja = await Loja.findByPk(lojaId, { attributes: ["id", "nome", "tipo"], transaction });
+  if (loja?.tipo !== "AVULSA") return null;
+  const outra = await Maquina.findOne({
+    where: { lojaId, ativo: true, ...(maquinaId ? { id: { [Op.ne]: maquinaId } } : {}) },
+    attributes: ["codigo"],
+    transaction,
+  });
+  return outra
+    ? `"${loja.nome}" é máquina avulsa e já tem a máquina ${outra.codigo}. Avulsa tem uma máquina só.`
+    : null;
+};
 
 const normalizarDatasAuditoria = (datas) => {
   if (!Array.isArray(datas)) return [];
@@ -169,6 +185,8 @@ export const criarMaquina = async (req, res) => {
     }
 
     const lojaNormalizada = normalizarLojaId(lojaId);
+    const erroAvulsa = await erroAvulsaOcupada(lojaNormalizada, null);
+    if (erroAvulsa) return res.status(400).json({ error: erroAvulsa });
     const statusFinal = normalizarStatusOperacao({
       lojaId: lojaNormalizada,
       statusOperacao,
@@ -299,6 +317,10 @@ export const atualizarMaquina = async (req, res) => {
 
     const lojaNormalizada =
       lojaId !== undefined ? normalizarLojaId(lojaId) : maquina.lojaId;
+    if (lojaNormalizada !== maquina.lojaId) {
+      const erroAvulsa = await erroAvulsaOcupada(lojaNormalizada, maquina.id);
+      if (erroAvulsa) return res.status(400).json({ error: erroAvulsa });
+    }
     const statusFinal = normalizarStatusOperacao({
       lojaId: lojaNormalizada,
       statusOperacao: statusOperacao ?? maquina.statusOperacao,
@@ -522,6 +544,8 @@ export const executarTransferenciaMaquina = async ({
       if (!lojaDestino) {
         throw erroDeTransferencia(400, "Loja de destino não encontrada");
       }
+      const erroAvulsa = await erroAvulsaOcupada(lojaDestinoNormalizada, maquina.id, transaction);
+      if (erroAvulsa) throw erroDeTransferencia(400, erroAvulsa);
     }
 
     lojaOrigemId = maquina.lojaId || null;

@@ -32,14 +32,6 @@ const Maquina = sequelize.define(
         key: "id",
       },
     },
-    // Máquina avulsa: fica no shopping sem loja (lojaId vazio + shoppingId).
-    // Sem loja e sem shopping = no depósito. Com loja, o shopping é o da loja
-    // (este campo fica vazio).
-    shoppingId: {
-      type: DataTypes.UUID,
-      allowNull: true,
-      field: "shopping_id",
-    },
     statusOperacao: {
       type: DataTypes.STRING(30),
       allowNull: false,
