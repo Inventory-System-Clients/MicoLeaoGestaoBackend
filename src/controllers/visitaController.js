@@ -6,8 +6,7 @@ import {
   MovimentacaoProduto,
   Produto,
   EstoqueLoja,
-  UsuarioLoja,
-} from "../models/index.js";
+  UsuarioLoja, Shopping } from "../models/index.js";
 import { temAcao } from "../permissoes/acessos.js";
 import { registrarMovimentacao } from "./movimentacaoController.js";
 import { analisarFotoPelucias } from "./assistenteIaController.js";
@@ -65,8 +64,9 @@ const visitaController = {
       if (permitidas !== null) where.id = permitidas;
       const lojas = await Loja.findAll({
         where,
-        attributes: ["id", "nome", "cidade"],
+        attributes: ["id", "nome", "cidade", "tipo", "shoppingId"],
         include: [
+          { model: Shopping, as: "shopping", attributes: ["id", "nome"], required: false },
           {
             model: Maquina,
             as: "maquinas",
