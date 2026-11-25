@@ -88,6 +88,13 @@ const Loja = sequelize.define(
       allowNull: true,
       field: "shopping_id",
     },
+    // Estoque emprestado: usa o estoque desta outra loja no abastecimento
+    // (vazio = estoque próprio). Ver utils/estoqueCompartilhado.js.
+    estoqueLojaId: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      field: "estoque_loja_id",
+    },
     valorFichaPadrao: {
       type: DataTypes.DECIMAL(10, 2),
       allowNull: false,

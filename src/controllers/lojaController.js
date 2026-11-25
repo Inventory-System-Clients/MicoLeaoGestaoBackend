@@ -14,6 +14,20 @@ const ehDepositoPrincipal = (loja) =>
 
 const VALOR_FICHA_PADRAO_DEFAULT = 2.5;
 
+// Estoque emprestado (Loja.estoqueLojaId): um nível só
+const validarEstoqueEmprestado = async ({ lojaId, estoqueLojaId }) => {
+  if (!estoqueLojaId) return null;
+  if (lojaId && estoqueLojaId === lojaId) return "A loja não pode usar o próprio estoque como emprestado";
+  const dona = await Loja.findByPk(estoqueLojaId, { attributes: ["id", "nome", "estoqueLojaId"] });
+  if (!dona) return "Loja do estoque não encontrada";
+  if (dona.estoqueLojaId) return `"${dona.nome}" já usa o estoque de outra loja. Escolha a loja que tem o estoque de verdade.`;
+  if (lojaId) {
+    const usando = await Loja.count({ where: { estoqueLojaId: lojaId } });
+    if (usando) return "Outras lojas usam o estoque desta. Ela não pode usar o estoque de outra.";
+  }
+  return null;
+};
+
 // Máquina avulsa: ponto de uma máquina só, solto no shopping
 const TIPOS_PONTO = ["LOJA", "AVULSA"];
 const validarTipoPonto = async ({ tipo, shoppingId, lojaId }) => {
@@ -157,6 +171,7 @@ export const criarLoja = async (req, res) => {
       projetoEmImplantacao,
       shoppingId,
       tipo = "LOJA",
+      estoqueLojaId,
     } = req.body;
 
     if (!nome) {
@@ -164,6 +179,8 @@ export const criarLoja = async (req, res) => {
     }
     const erroTipo = await validarTipoPonto({ tipo, shoppingId });
     if (erroTipo) return res.status(400).json({ error: erroTipo });
+    const erroEstoque = await validarEstoqueEmprestado({ estoqueLojaId });
+    if (erroEstoque) return res.status(400).json({ error: erroEstoque });
 
     const valorFichaNormalizado = normalizarValorFichaPadrao(valorFichaPadrao);
     if (valorFichaNormalizado.invalido) {
@@ -186,6 +203,7 @@ export const criarLoja = async (req, res) => {
       observacoes: observacoes || null,
       shoppingId: shoppingId || null,
       tipo,
+      estoqueLojaId: estoqueLojaId || null,
       dataFimContrato: dataFimContrato || null,
       diasAvisoContrato:
         diasAvisoContrato !== undefined && diasAvisoContrato !== null && diasAvisoContrato !== ""
@@ -236,12 +254,17 @@ export const atualizarLoja = async (req, res) => {
       valorFichaPadrao,
       shoppingId,
       tipo,
+      estoqueLojaId,
     } = req.body;
 
     const tipoFinal = tipo ?? loja.tipo ?? "LOJA";
     const shoppingFinal = shoppingId !== undefined ? shoppingId || null : loja.shoppingId;
     const erroTipo = await validarTipoPonto({ tipo: tipoFinal, shoppingId: shoppingFinal, lojaId: loja.id });
     if (erroTipo) return res.status(400).json({ error: erroTipo });
+    // "" volta a usar o estoque próprio; sem mandar, mantém
+    const estoqueFinal = estoqueLojaId !== undefined ? estoqueLojaId || null : loja.estoqueLojaId;
+    const erroEstoque = await validarEstoqueEmprestado({ lojaId: loja.id, estoqueLojaId: estoqueFinal });
+    if (erroEstoque) return res.status(400).json({ error: erroEstoque });
 
     // Se a data de fim do contrato mudou (renovação), zera qualquer "adiar"
     // que tivesse sido configurado pro contrato anterior.
@@ -289,6 +312,7 @@ export const atualizarLoja = async (req, res) => {
       // "" tira do shopping (loja de rua)
       shoppingId: shoppingFinal,
       tipo: tipoFinal,
+      estoqueLojaId: estoqueFinal,
       dataFimContrato: dataFimContrato ?? loja.dataFimContrato,
       diasAvisoContrato: diasAvisoContrato ?? loja.diasAvisoContrato,
       contratoAvisoAdiadoDias: contratoMudou

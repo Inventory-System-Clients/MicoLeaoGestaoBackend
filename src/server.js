@@ -170,6 +170,10 @@ const startServer = async () => {
         await queryInterface.addColumn("lojas", "shopping_id", { type: DataTypes.UUID, allowNull: true });
         console.log("✅ Coluna shopping_id adicionada em lojas!");
       }
+      if (!colunasLojasShopping.estoque_loja_id) {
+        await queryInterface.addColumn("lojas", "estoque_loja_id", { type: DataTypes.UUID, allowNull: true });
+        console.log("✅ Coluna estoque_loja_id adicionada em lojas!");
+      }
       if (!colunasLojasShopping.tipo) {
         await queryInterface.addColumn("lojas", "tipo", { type: DataTypes.STRING(20), allowNull: false, defaultValue: "LOJA" });
         console.log("✅ Coluna tipo adicionada em lojas!");

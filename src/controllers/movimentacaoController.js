@@ -7,6 +7,7 @@ import {
   EstoqueLoja,
   Loja,
 } from "../models/index.js";
+import { lojaDoEstoque } from "../utils/estoqueCompartilhado.js";
 import { Op } from "sequelize";
 import { temAcao } from "../permissoes/acessos.js";
 import { limitesDe, inicioDosUltimosDias } from "../permissoes/limites.js";
@@ -118,6 +119,8 @@ export const registrarMovimentacao = async (req, res) => {
     if (!maquina) {
       return res.status(404).json({ error: "Máquina não encontrada" });
     }
+    // Estoque emprestado: abastece/devolve no estoque da loja que empresta
+    const lojaEstoqueId = await lojaDoEstoque(maquina.lojaId);
 
     if (Array.isArray(produtos) && produtos.length > 0) {
       for (const produto of produtos) {
@@ -126,7 +129,7 @@ export const registrarMovimentacao = async (req, res) => {
 
         const estoqueLoja = await EstoqueLoja.findOne({
           where: {
-            lojaId: maquina.lojaId,
+            lojaId: lojaEstoqueId,
             produtoId: produto.produtoId,
           },
         });
@@ -138,7 +141,7 @@ export const registrarMovimentacao = async (req, res) => {
           });
 
           return res.status(400).json({
-            error: `Não há estoque suficiente na loja para abastecer ${produtoInfo?.nome || "este produto"}. Disponível: ${estoqueDisponivel}, solicitado: ${quantidadeAbastecida}.`,
+            error: `Não há estoque suficiente na loja (ou na loja de onde vem o estoque) para abastecer ${produtoInfo?.nome || "este produto"}. Disponível: ${estoqueDisponivel}, solicitado: ${quantidadeAbastecida}.`,
           });
         }
       }
@@ -268,7 +271,7 @@ export const registrarMovimentacao = async (req, res) => {
           console.log(
             "🏪 [registrarMovimentacao] Atualizando estoque da loja:",
             {
-              lojaId: maquina.lojaId,
+              lojaId: lojaEstoqueId,
               produtoId: produto.produtoId,
               quantidadeAbastecida: produto.quantidadeAbastecida,
             },
@@ -277,7 +280,7 @@ export const registrarMovimentacao = async (req, res) => {
           // Buscar estoque do produto na loja da máquina
           const estoqueLoja = await EstoqueLoja.findOne({
             where: {
-              lojaId: maquina.lojaId,
+              lojaId: lojaEstoqueId,
               produtoId: produto.produtoId,
             },
           });
@@ -305,7 +308,7 @@ export const registrarMovimentacao = async (req, res) => {
             console.log(
               "⚠️ [registrarMovimentacao] Estoque da loja não encontrado:",
               {
-                lojaId: maquina.lojaId,
+                lojaId: lojaEstoqueId,
                 produtoId: produto.produtoId,
               },
             );
@@ -323,7 +326,7 @@ export const registrarMovimentacao = async (req, res) => {
       ) {
         const estoqueLoja = await EstoqueLoja.findOne({
           where: {
-            lojaId: maquina.lojaId,
+            lojaId: lojaEstoqueId,
             produtoId: produto.produtoId,
           },
         });
@@ -344,7 +347,7 @@ export const registrarMovimentacao = async (req, res) => {
           console.log(
             "⚠️ [registrarMovimentacao] Estoque da loja não encontrado para devolução:",
             {
-              lojaId: maquina.lojaId,
+              lojaId: lojaEstoqueId,
               produtoId: produto.produtoId,
             },
           );
@@ -726,6 +729,7 @@ export const atualizarMovimentacao = async (req, res) => {
           Number(updateData.sairam || 0);
 
     const maquina = await Maquina.findByPk(movimentacao.maquinaId);
+    const lojaEstoqueId = await lojaDoEstoque(maquina?.lojaId);
     if (maquina) {
       updateData.valorFaturado =
         Number(updateData.fichas || 0) * parseFloat(maquina.valorFicha || 0) +
@@ -751,7 +755,7 @@ export const atualizarMovimentacao = async (req, res) => {
             if (produtoAntigo.quantidadeAbastecida > 0) {
               const estoqueLoja = await EstoqueLoja.findOne({
                 where: {
-                  lojaId: maquina.lojaId,
+                  lojaId: lojaEstoqueId,
                   produtoId: produtoAntigo.produtoId,
                 },
                 transaction,
@@ -804,7 +808,7 @@ export const atualizarMovimentacao = async (req, res) => {
               if (detalhe.quantidadeAbastecida > 0) {
                 const estoqueLoja = await EstoqueLoja.findOne({
                   where: {
-                    lojaId: maquina.lojaId,
+                    lojaId: lojaEstoqueId,
                     produtoId: detalhe.produtoId,
                   },
                   transaction,
@@ -827,7 +831,7 @@ export const atualizarMovimentacao = async (req, res) => {
                   console.log(
                     "⚠️ [atualizarMovimentacao] Estoque não encontrado para dedução:",
                     {
-                      lojaId: maquina.lojaId,
+                      lojaId: lojaEstoqueId,
                       produtoId: detalhe.produtoId,
                     },
                   );

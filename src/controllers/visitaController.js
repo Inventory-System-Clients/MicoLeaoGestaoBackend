@@ -7,6 +7,7 @@ import {
   Produto,
   EstoqueLoja,
   UsuarioLoja, Shopping } from "../models/index.js";
+import { lojaDoEstoque } from "../utils/estoqueCompartilhado.js";
 import { temAcao } from "../permissoes/acessos.js";
 import { registrarMovimentacao } from "./movimentacaoController.js";
 import { analisarFotoPelucias } from "./assistenteIaController.js";
@@ -121,7 +122,7 @@ const visitaController = {
           include: [{ model: MovimentacaoProduto, as: "detalhesProdutos", attributes: ["produtoId"] }],
         }),
         EstoqueLoja.findAll({
-          where: { lojaId: maquina.lojaId, quantidade: { [Op.gt]: 0 } },
+          where: { lojaId: await lojaDoEstoque(maquina.lojaId), quantidade: { [Op.gt]: 0 } },
           attributes: ["produtoId", "quantidade"],
           include: [{ model: Produto, as: "produto", attributes: ["id", "nome", "codigo"] }],
         }),
