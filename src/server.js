@@ -163,6 +163,15 @@ const startServer = async () => {
         console.log("✅ Coluna jornada_diaria_minutos adicionada aos usuários!");
       }
 
+      // Shopping: loja dentro do shopping e máquina avulsa (no shopping sem loja)
+      for (const tabela of ["lojas", "maquinas"]) {
+        const colunas = await queryInterface.describeTable(tabela);
+        if (!colunas.shopping_id) {
+          await queryInterface.addColumn(tabela, "shopping_id", { type: DataTypes.UUID, allowNull: true });
+          console.log(`✅ Coluna shopping_id adicionada em ${tabela}!`);
+        }
+      }
+
       // Tarefa de período (de um dia até outro)
       const colunasTarefas = await queryInterface.describeTable("tarefas");
       if (!colunasTarefas.data_fim) {

@@ -67,6 +67,7 @@ import ComissaoMeta from "./ComissaoMeta.js";
 import LancamentoMeta from "./LancamentoMeta.js";
 import Tarefa from "./Tarefa.js";
 import PeriodoCalendario from "./PeriodoCalendario.js";
+import Shopping from "./Shopping.js";
 // MovimentaÃ§Ã£o de VeÃ­culo -> VeÃ­culo e UsuÃ¡rio
 MovimentacaoVeiculo.belongsTo(Veiculo, {
   as: "veiculo",
@@ -96,6 +97,12 @@ Usuario.hasMany(MovimentacaoEstoqueLoja, {
 // Loja -> MÃ¡quinas
 Loja.hasMany(Maquina, { foreignKey: "lojaId", as: "maquinas" });
 Maquina.belongsTo(Loja, { foreignKey: "lojaId", as: "loja" });
+
+// Shopping -> lojas e máquinas avulsas (máquina no shopping sem loja)
+Shopping.hasMany(Loja, { foreignKey: "shoppingId", as: "lojas" });
+Loja.belongsTo(Shopping, { foreignKey: "shoppingId", as: "shopping" });
+Shopping.hasMany(Maquina, { foreignKey: "shoppingId", as: "maquinasAvulsas" });
+Maquina.belongsTo(Shopping, { foreignKey: "shoppingId", as: "shopping" });
 
 // MÃ¡quina -> MovimentaÃ§Ãµes
 Maquina.hasMany(Movimentacao, { foreignKey: "maquinaId", as: "movimentacoes" });
@@ -767,6 +774,7 @@ ProjetoLojaMaquinaHistorico.belongsTo(Usuario, {
 });
 
 export {
+  Shopping,
   Usuario,
   Loja,
   Maquina,

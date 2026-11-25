@@ -73,6 +73,12 @@ const Loja = sequelize.define(
       comment:
         "Quando preenchido, adia o alerta de contrato: só volta a avisar quando faltar esse tanto de dias (ou menos). Zerado automaticamente quando a data de fim do contrato muda.",
     },
+    // Shopping onde a loja fica (vazio = loja de rua / sem shopping)
+    shoppingId: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      field: "shopping_id",
+    },
     valorFichaPadrao: {
       type: DataTypes.DECIMAL(10, 2),
       allowNull: false,

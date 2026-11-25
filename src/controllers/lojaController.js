@@ -1,4 +1,4 @@
-import { Loja, Maquina, UsuarioLoja, ExtintorLoja } from "../models/index.js";
+import { Loja, Maquina, UsuarioLoja, ExtintorLoja, Shopping } from "../models/index.js";
 import {
   STATUS_LOJA_EM_IMPLANTACAO,
   ehLojaDeProjetoEmImplantacao,
@@ -54,6 +54,7 @@ export const listarLojas = async (req, res) => {
             as: "extintores",
             attributes: ["id", "identificacao", "dataVencimento"],
           },
+          { model: Shopping, as: "shopping", attributes: ["id", "nome"] },
         ],
         order: [["nome", "ASC"]],
       });
@@ -75,6 +76,7 @@ export const listarLojas = async (req, res) => {
                 as: "extintores",
                 attributes: ["id", "identificacao", "dataVencimento"],
               },
+              { model: Shopping, as: "shopping", attributes: ["id", "nome"] },
             ],
           },
         ],
@@ -106,6 +108,7 @@ export const obterLoja = async (req, res) => {
           as: "extintores",
           attributes: ["id", "identificacao", "dataVencimento"],
         },
+        { model: Shopping, as: "shopping", attributes: ["id", "nome"] },
       ],
     });
 
@@ -137,6 +140,7 @@ export const criarLoja = async (req, res) => {
       diasAvisoContrato,
       valorFichaPadrao,
       projetoEmImplantacao,
+      shoppingId,
     } = req.body;
 
     if (!nome) {
@@ -162,6 +166,7 @@ export const criarLoja = async (req, res) => {
         : statusOperacao || "ATIVA",
       dataInicio: dataInicio || null,
       observacoes: observacoes || null,
+      shoppingId: shoppingId || null,
       dataFimContrato: dataFimContrato || null,
       diasAvisoContrato:
         diasAvisoContrato !== undefined && diasAvisoContrato !== null && diasAvisoContrato !== ""
@@ -210,6 +215,7 @@ export const atualizarLoja = async (req, res) => {
       contratoAvisoAdiadoDias,
       ativo,
       valorFichaPadrao,
+      shoppingId,
     } = req.body;
 
     // Se a data de fim do contrato mudou (renovação), zera qualquer "adiar"
@@ -255,6 +261,8 @@ export const atualizarLoja = async (req, res) => {
         : statusOperacao ?? loja.statusOperacao,
       dataInicio: dataInicio ?? loja.dataInicio,
       observacoes: observacoes ?? loja.observacoes,
+      // "" tira do shopping (loja de rua)
+      shoppingId: shoppingId !== undefined ? shoppingId || null : loja.shoppingId,
       dataFimContrato: dataFimContrato ?? loja.dataFimContrato,
       diasAvisoContrato: diasAvisoContrato ?? loja.diasAvisoContrato,
       contratoAvisoAdiadoDias: contratoMudou

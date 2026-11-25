@@ -35,6 +35,24 @@ export const CATALOGO = [
     ],
   },
   {
+    area: "shoppings",
+    nome: "Shoppings",
+    acoes: [
+      {
+        chave: "shoppings.ver",
+        nome: "Ver shoppings",
+        rotas: ["GET /api/shoppings", "GET /api/shoppings/:id"],
+        telas: ["/shoppings"],
+      },
+      {
+        chave: "shoppings.gerenciar",
+        nome: "Cadastrar, editar e excluir shopping",
+        rotas: ["POST /api/shoppings", "PUT /api/shoppings/:id", "DELETE /api/shoppings/:id"],
+        requer: ["shoppings.ver"],
+      },
+    ],
+  },
+  {
     area: "lojas",
     nome: "Lojas",
     acoes: [
