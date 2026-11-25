@@ -11,6 +11,7 @@ import {
   Produto,
   Usuario,
 } from "../models/index.js";
+import { lojaDoEstoque } from "../utils/estoqueCompartilhado.js";
 import { normalizarLogAtividade } from "./logAtividadeController.js";
 
 const sameId = (a, b) => String(a ?? "") === String(b ?? "");
@@ -87,7 +88,8 @@ export const analisarEstoqueLoja = async (req, res) => {
     const [estoqueAtual, produtos, movimentacoesEstoque, movimentacoesMaquinas, logs] =
       await Promise.all([
         EstoqueLoja.findAll({
-          where: { lojaId },
+          // estoque emprestado: o saldo é o da loja dona
+          where: { lojaId: await lojaDoEstoque(lojaId) },
           include: [
             {
               model: Produto,

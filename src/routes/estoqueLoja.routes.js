@@ -9,6 +9,7 @@ import {
 } from "../controllers/estoqueLojaController.js";
 import { analisarEstoqueLoja } from "../controllers/estoqueAnaliseController.js";
 import { autenticar, autorizarRole, registrarLog } from "../middlewares/auth.js";
+import { lojaDoEstoque } from "../utils/estoqueCompartilhado.js";
 
 const router = express.Router();
 
@@ -21,6 +22,19 @@ router.use((req, res, next) => {
     body: req.body,
   });
   next();
+});
+
+// Estoque emprestado: loja (ou máquina avulsa) que usa o estoque de outra
+// vê e mexe no estoque da loja dona (é o mesmo estoque). A análise resolve
+// por conta própria (cruza as máquinas da própria loja com o estoque).
+router.param("lojaId", async (req, res, next, lojaId) => {
+  try {
+    if (/\/analise\/?$/.test(req.path)) return next();
+    req.params.lojaId = await lojaDoEstoque(lojaId);
+    next();
+  } catch (error) {
+    next(error);
+  }
 });
 
 // Alterar estoque: Admin, Chefe de Expedição e Cadastro (o Funcionário comum

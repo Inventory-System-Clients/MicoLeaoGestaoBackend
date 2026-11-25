@@ -1,13 +1,16 @@
 // Endpoint novo: ranking de lucro bruto das lojas
 export const rankingLucroBrutoLojas = async (req, res) => {
   try {
-    const { dataInicio, dataFim } = req.query;
+    const { dataInicio, dataFim, shoppingId } = req.query;
     if (!dataInicio || !dataFim) {
       return res
         .status(400)
         .json({ error: "dataInicio e dataFim são obrigatórios" });
     }
-    const lojas = await Loja.findAll({ where: { ativo: true }, raw: true });
+    const lojas = await Loja.findAll({
+      where: { ativo: true, ...whereLojaDoShopping(shoppingId) },
+      raw: true,
+    });
     const respostas = await Promise.allSettled(
       lojas.map((loja) =>
         gerarRelatorioImpressaoPorLoja({
@@ -43,13 +46,20 @@ export const rankingLucroBrutoLojas = async (req, res) => {
       return {
         lojaId: loja?.id,
         lojaNome: dados?.loja?.nome || loja?.nome || "Loja",
+        tipo: loja?.tipo || "LOJA",
+        shoppingId: loja?.shoppingId || null,
         lucroBruto,
       };
     });
     const rankingLucroBrutoLojas = [...rankingLojas]
       .sort((a, b) => b.lucroBruto - a.lucroBruto)
       .slice(0, 10);
-    return res.json({ rankingLucroBrutoLojas });
+    const rankingLucroBrutoShoppings = somarPorShopping(
+      rankingLojas,
+      ["lucroBruto"],
+      await nomesDosShoppings(),
+    ).sort((a, b) => b.lucroBruto - a.lucroBruto);
+    return res.json({ rankingLucroBrutoLojas, rankingLucroBrutoShoppings });
   } catch (error) {
     console.error("Erro ao gerar ranking de lucro bruto:", error);
     return res.status(500).json({
@@ -87,6 +97,13 @@ import {
   ExtintorLoja,
 } from "../models/index.js";
 import { calcularGastoFixoProporcionalPeriodo } from "../services/gastoFixoService.js";
+import {
+  whereLojaDoShopping,
+  lojaIdsDoShopping,
+  nomesDosShoppings,
+  somarPorShopping,
+  opLojaIds,
+} from "../utils/shoppingRelatorio.js";
 import {
   calcularCustoMedioProdutos,
   buscarHistoricoCustoProduto,
@@ -134,7 +151,7 @@ const calcularGastoVariavelPeriodo = async (lojaId, inicio, fim) => {
 // --- DASHBOARD GERAL ---
 export const dashboardRelatorio = async (req, res) => {
   try {
-    const { lojaId, dataInicio, dataFim } = req.query;
+    const { lojaId, dataInicio, dataFim, shoppingId } = req.query;
 
     // 1. Configuração de Datas
     const fim = dataFim ? new Date(`${dataFim}T23:59:59`) : new Date();
@@ -149,6 +166,8 @@ export const dashboardRelatorio = async (req, res) => {
 
     const whereMaquina = {};
     if (lojaId) whereMaquina.lojaId = lojaId;
+    // Shopping: só as máquinas das lojas/avulsas dele (a loja, se vier, manda)
+    else if (shoppingId) whereMaquina.lojaId = opLojaIds(await lojaIdsDoShopping(shoppingId));
 
     // --- QUERY 1: TOTAIS GERAIS ---
     const totaisRaw = await Movimentacao.findAll({
@@ -609,7 +628,7 @@ export const ignorarAlertaMovimentacao = async (req, res) => {
 // --- BALANÇO MENSAL ---
 export const balançoSemanal = async (req, res) => {
   try {
-    const { lojaId, dataInicio, dataFim } = req.query;
+    const { lojaId, dataInicio, dataFim, shoppingId } = req.query;
 
     const fim = dataFim ? new Date(dataFim) : new Date();
     const inicio = dataInicio
@@ -630,13 +649,15 @@ export const balançoSemanal = async (req, res) => {
         {
           model: Loja,
           as: "loja",
-          attributes: ["id", "nome"],
+          attributes: ["id", "nome", "tipo", "shoppingId"],
         },
       ],
     };
 
     if (lojaId) {
       includeMaquina.where = { lojaId };
+    } else if (shoppingId) {
+      includeMaquina.where = { lojaId: opLojaIds(await lojaIdsDoShopping(shoppingId)) };
     }
 
     const movimentacoes = await Movimentacao.findAll({
@@ -717,6 +738,8 @@ export const balançoSemanal = async (req, res) => {
           abastecidas: 0,
         };
       }
+      lojasMap[lojaNome].shoppingId = mov.maquina?.loja?.shoppingId || null;
+      lojasMap[lojaNome].tipo = mov.maquina?.loja?.tipo || "LOJA";
       lojasMap[lojaNome].fichas += mov.fichas || 0;
       lojasMap[lojaNome].faturamento += parseFloat(mov.valorFaturado || 0);
       lojasMap[lojaNome].sairam += mov.sairam || 0;
@@ -738,6 +761,11 @@ export const balançoSemanal = async (req, res) => {
       totais,
       distribuicaoProdutos,
       distribuicaoLojas,
+      distribuicaoShoppings: somarPorShopping(
+        Object.values(lojasMap),
+        ["fichas", "faturamento", "sairam", "abastecidas"],
+        await nomesDosShoppings(),
+      ).sort((a, b) => b.faturamento - a.faturamento),
       totalMovimentacoes: movimentacoes.length,
     });
   } catch (error) {
@@ -1838,7 +1866,7 @@ export const relatorioImpressao = async (req, res) => {
 
 export const relatorioTodasLojas = async (req, res) => {
   try {
-    const { dataInicio, dataFim, lojaIds } = req.query;
+    const { dataInicio, dataFim, lojaIds, shoppingId } = req.query;
 
     if (!dataInicio || !dataFim) {
       return res
@@ -1859,6 +1887,7 @@ export const relatorioTodasLojas = async (req, res) => {
       where: {
         ativo: true,
         ...(idsFiltro && idsFiltro.length ? { id: { [Op.in]: idsFiltro } } : {}),
+        ...whereLojaDoShopping(shoppingId),
       },
       raw: true,
     });
@@ -1972,6 +2001,8 @@ export const relatorioTodasLojas = async (req, res) => {
       return {
         lojaId: loja?.id,
         lojaNome: dados?.loja?.nome || loja?.nome || "Loja",
+        tipo: loja?.tipo || "LOJA",
+        shoppingId: loja?.shoppingId || null,
         lucroBruto,
         custoTotal,
         custoVariavel,
@@ -2079,8 +2110,36 @@ export const relatorioTodasLojas = async (req, res) => {
       .filter((item) => item.custoFixo > 0)
       .sort((a, b) => b.custoFixo - a.custoFixo);
 
+    // Soma por shopping (máquina avulsa entra no shopping dela)
+    const porShopping = somarPorShopping(
+      rankingLojas,
+      [
+        "lucroBruto",
+        "lucroLiquido",
+        "custoTotal",
+        "custoFixo",
+        "custoVariavel",
+        "custoProdutos",
+        "taxaDeCartao",
+        "dinheiro",
+        "cartaoPix",
+        "cartaoPixLiquido",
+        "fichas",
+        "produtosSairam",
+        "sangriaTotalPeriodo",
+      ],
+      await nomesDosShoppings(),
+    )
+      .map((grupo) => ({
+        ...grupo,
+        participacaoLucroBruto:
+          totais.lucroBrutoTotal > 0 ? (grupo.lucroBruto / totais.lucroBrutoTotal) * 100 : 0,
+      }))
+      .sort((a, b) => b.lucroBruto - a.lucroBruto);
+
     return res.json({
       tipo: "todas-lojas",
+      porShopping,
       periodo: {
         inicio: dataInicio,
         fim: dataFim,
