@@ -377,6 +377,7 @@ export const criarManutencao = async (req, res) => {
       pecaPlanejada,
       setor,
       destinatarioId,
+      destinatariosIds,
     } = req.body;
 
     if (!titulo || !descricao) {
@@ -390,8 +391,8 @@ export const criarManutencao = async (req, res) => {
     // outros só solicitam e a solicitação espera autorização
     const jaAutorizada = podeAutorizar(req.usuario);
     const destino = jaAutorizada
-      ? await validarDestino({ setor, destinatarioId, transaction })
-      : { setor: null, destinatarioId: null };
+      ? await validarDestino({ setor, destinatarioId, destinatariosIds, transaction })
+      : { setor: null, destinatarioId: null, destinatariosIds: [] };
     if (destino.erro) {
       await transaction.rollback();
       return res.status(400).json({ error: destino.erro });
@@ -536,6 +537,7 @@ export const criarManutencao = async (req, res) => {
         status: jaAutorizada ? "PENDENTE" : "SOLICITADA",
         setor: destino.setor,
         destinatarioId: destino.destinatarioId,
+        destinatariosIds: destino.destinatariosIds || [],
         autorizadaPorId: jaAutorizada ? req.usuario.id : null,
         autorizadaEm: jaAutorizada ? new Date() : null,
         historico: [
@@ -641,21 +643,36 @@ const eventoHistorico = (usuario, acao, status, detalhe = null) => ({
   detalhe,
 });
 
-const validarDestino = async ({ setor, destinatarioId, transaction }) => {
-  if (destinatarioId) {
-    const pessoa = await Usuario.findOne({
-      where: { id: destinatarioId, ativo: true },
+// Destino: setor, uma pessoa (destinatarioId) ou várias (destinatariosIds;
+// a 1ª vira destinatarioId)
+const validarDestino = async ({ setor, destinatarioId, destinatariosIds, transaction }) => {
+  const ids = [
+    ...new Set(
+      (Array.isArray(destinatariosIds) && destinatariosIds.length ? destinatariosIds : destinatarioId ? [destinatarioId] : [])
+        .filter(Boolean)
+        .map(String),
+    ),
+  ];
+  if (ids.length) {
+    const pessoas = await Usuario.findAll({
+      where: { id: ids, ativo: true },
       attributes: ["id", "nome", "role"],
       transaction,
     });
-    if (!pessoa) return { erro: "Pessoa escolhida não encontrada ou inativa." };
-    return { setor: pessoa.role, destinatarioId: pessoa.id, rotulo: pessoa.nome };
+    if (pessoas.length !== ids.length) return { erro: "Pessoa escolhida não encontrada ou inativa." };
+    const ordenadas = ids.map((id) => pessoas.find((p) => String(p.id) === id));
+    return {
+      setor: ordenadas[0].role,
+      destinatarioId: ordenadas[0].id,
+      destinatariosIds: ids,
+      rotulo: ordenadas.map((p) => p.nome).join(", "),
+    };
   }
   const perfis = Usuario.getAttributes().role.values.filter((p) => !PERFIS_FORA_DO_SETOR.includes(p));
   if (!setor || !perfis.includes(setor)) {
     return { erro: "Escolha para qual setor ou pessoa vai a manutenção." };
   }
-  return { setor, destinatarioId: null, rotulo: `o setor ${NOMES_PERFIS[setor] || setor}` };
+  return { setor, destinatarioId: null, destinatariosIds: [], rotulo: `o setor ${NOMES_PERFIS[setor] || setor}` };
 };
 
 // Setores (perfis com gente ativa) e pessoas, para escolher o destino
@@ -702,7 +719,12 @@ const carregarParaAcao = (id, transaction) =>
   });
 
 const podeVerPendente = (manutencao, usuario) => {
-  if (manutencao.destinatarioId) return manutencao.destinatarioId === usuario.id;
+  if (manutencao.destinatarioId) {
+    return (
+      manutencao.destinatarioId === usuario.id ||
+      (manutencao.destinatariosIds || []).map(String).includes(String(usuario.id))
+    );
+  }
   if (manutencao.setor) return manutencao.setor === usuario.role;
   return (
     manutencao.responsavelId === usuario.id ||
@@ -710,9 +732,23 @@ const podeVerPendente = (manutencao, usuario) => {
   );
 };
 
+// Junta { id, nome, role } das pessoas do destino (destinatariosIds)
+const comDestinatarios = async (manutencoes) => {
+  const lista = manutencoes.map((m) => (m.toJSON ? m.toJSON() : m));
+  const ids = [...new Set(lista.flatMap((m) => m.destinatariosIds || []).map(String))];
+  const pessoas = ids.length
+    ? await Usuario.findAll({ where: { id: ids }, attributes: ["id", "nome", "role"] })
+    : [];
+  const porId = new Map(pessoas.map((p) => [String(p.id), p.toJSON()]));
+  return lista.map((m) => ({
+    ...m,
+    destinatarios: (m.destinatariosIds || []).map((id) => porId.get(String(id))).filter(Boolean),
+  }));
+};
+
 const responderComManutencao = async (res, id) => {
   const atualizada = await Manutencao.findByPk(id, { include: includeAdmin });
-  res.json(atualizada);
+  res.json(atualizada ? (await comDestinatarios([atualizada]))[0] : atualizada);
 };
 
 // Executa uma ação do fluxo numa transação: `regra` devolve { erro, status }
@@ -756,6 +792,7 @@ export const autorizarManutencao = executarAcao("autorizar", async ({ manutencao
     status: "PENDENTE",
     setor: destino.setor,
     destinatarioId: destino.destinatarioId,
+    destinatariosIds: destino.destinatariosIds || [],
     autorizadaPorId: req.usuario.id,
     autorizadaEm: new Date(),
   };
@@ -856,6 +893,7 @@ export const reenviarManutencao = executarAcao("reenviar", async ({ manutencao, 
       status: "PENDENTE",
       setor: destino.setor,
       destinatarioId: destino.destinatarioId,
+      destinatariosIds: destino.destinatariosIds || [],
       aceitaPorId: null,
       aceitaEm: null,
     },
@@ -930,6 +968,7 @@ export const listarManutencoes = async (req, res) => {
         { aceitaPorId: req.usuario.id },
         { criadoPorId: req.usuario.id },
         { status: "PENDENTE", destinatarioId: req.usuario.id },
+        { status: "PENDENTE", destinatariosIds: { [Op.contains]: [String(req.usuario.id)] } },
         { status: "PENDENTE", destinatarioId: null, setor: req.usuario.role },
         // Manutenções antigas (antes do setor): quem estava na lista
         { status: "PENDENTE", setor: null, destinatarioId: null, responsavelId: req.usuario.id },
@@ -986,7 +1025,7 @@ export const listarManutencoes = async (req, res) => {
       order: [["createdAt", "DESC"]],
     });
 
-    res.json(manutencoes);
+    res.json(await comDestinatarios(manutencoes));
   } catch (error) {
     console.error("Erro ao listar manutenções:", error);
     res.status(500).json({ error: "Erro ao listar manutenções" });

@@ -84,6 +84,13 @@ const Manutencao = sequelize.define(
       allowNull: true,
       references: { model: "usuarios", key: "id" },
     },
+    // Várias pessoas: todas veem a pendente e a primeira que aceitar fica com
+    // ela (como um setor). destinatarioId é a 1ª da lista.
+    destinatariosIds: {
+      type: DataTypes.JSONB,
+      allowNull: false,
+      defaultValue: [],
+    },
     aceitaPorId: {
       type: DataTypes.UUID,
       allowNull: true,

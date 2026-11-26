@@ -170,6 +170,13 @@ const startServer = async () => {
         await queryInterface.addColumn("lojas", "shopping_id", { type: DataTypes.UUID, allowNull: true });
         console.log("✅ Coluna shopping_id adicionada em lojas!");
       }
+      // Manutenção para várias pessoas
+      const colunasManutencoes = await queryInterface.describeTable("manutencoes");
+      if (!colunasManutencoes.destinatariosIds) {
+        await queryInterface.addColumn("manutencoes", "destinatariosIds", { type: DataTypes.JSONB, allowNull: false, defaultValue: [] });
+        console.log("✅ Coluna destinatariosIds adicionada às manutenções!");
+      }
+
       // Tarefas com várias pessoas: o responsável de cada tarefa antiga entra na lista
       const colunasTarefasPessoas = await queryInterface.describeTable("tarefas");
       if (!colunasTarefasPessoas.pessoas_ids) {
