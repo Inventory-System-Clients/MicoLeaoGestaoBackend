@@ -79,7 +79,8 @@ export const CATALOGO = [
       { chave: "lojas.excluir", nome: "Excluir loja", rotas: ["DELETE /api/lojas/:id"] },
       {
         chave: "lojas.visaoGeral",
-        nome: "Ver painel Visão de Lojas",
+        // Desde 2026-11-26 é a lista de lojas do menu (a antiga /lojas redireciona pra cá)
+        nome: "Ver lista de lojas (Visão das Lojas)",
         telas: ["/visao-lojas"],
         perfisPadrao: ["FUNCIONARIO_CADASTRO"],
         requer: ["lojas.ver"],

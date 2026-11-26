@@ -21,7 +21,7 @@ const incluirConteudo = [
   {
     model: Loja,
     as: "lojas",
-    attributes: ["id", "nome", "ativo", "tipo"],
+    attributes: ["id", "nome", "ativo", "tipo", "estoqueLojaId"],
     where: whereSemLojaDeProjeto,
     required: false,
     include: [
