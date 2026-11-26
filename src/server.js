@@ -170,6 +170,16 @@ const startServer = async () => {
         await queryInterface.addColumn("lojas", "shopping_id", { type: DataTypes.UUID, allowNull: true });
         console.log("✅ Coluna shopping_id adicionada em lojas!");
       }
+      // Tarefas com várias pessoas: o responsável de cada tarefa antiga entra na lista
+      const colunasTarefasPessoas = await queryInterface.describeTable("tarefas");
+      if (!colunasTarefasPessoas.pessoas_ids) {
+        await queryInterface.addColumn("tarefas", "pessoas_ids", { type: DataTypes.JSONB, allowNull: false, defaultValue: [] });
+        await sequelize.query(
+          `UPDATE tarefas SET pessoas_ids = jsonb_build_array(responsavel_id::text) WHERE responsavel_id IS NOT NULL`,
+        );
+        console.log("✅ Coluna pessoas_ids adicionada às tarefas!");
+      }
+
       // Rotas com várias pessoas: o motorista de cada rota antiga entra na lista
       await sequelize.query(`
         INSERT INTO roteiro_usuarios (id, roteiro_id, usuario_id, created_at, updated_at)

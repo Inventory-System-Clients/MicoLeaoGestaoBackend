@@ -83,6 +83,14 @@ const Tarefa = sequelize.define(
       allowNull: true,
       field: "responsavel_id",
     },
+    // Pessoas da tarefa (várias). responsavelId é a 1ª (principal). Qualquer
+    // uma aceita e marca Feito; a tarefa é do grupo.
+    pessoasIds: {
+      type: DataTypes.JSONB,
+      allowNull: false,
+      defaultValue: [],
+      field: "pessoas_ids",
+    },
     aceitaEm: {
       type: DataTypes.DATE,
       allowNull: true,

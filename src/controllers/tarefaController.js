@@ -81,15 +81,34 @@ const lerDataFim = (data, dataFim) => {
 
 const textoDias = (data, dataFim) => (dataFim ? `${dataBr(data)} a ${dataBr(dataFim)}` : dataBr(data));
 
-const formatar = (tarefa, usuario) => {
+// Pessoas da tarefa: lista (pessoasIds) + o principal, sem repetir
+const pessoasDa = (json) =>
+  [...new Set([json.responsavelId, ...(Array.isArray(json.pessoasIds) ? json.pessoasIds : [])].filter(Boolean).map(String))];
+
+// Nomes das pessoas de várias tarefas de uma vez (para a lista/calendário)
+export const nomesDasPessoas = async (tarefas) => {
+  const ids = [...new Set(tarefas.flatMap((t) => pessoasDa(t.toJSON ? t.toJSON() : t)))];
+  if (!ids.length) return new Map();
+  const usuarios = await Usuario.findAll({ where: { id: ids }, attributes: USUARIO_ATTRS });
+  return new Map(usuarios.map((u) => [String(u.id), u.toJSON()]));
+};
+
+const formatar = (tarefa, usuario, nomes = null) => {
   const json = tarefa.toJSON();
   const gestor = ehGestorDeTarefas(usuario);
-  const souResponsavel = json.responsavelId === usuario.id;
+  const pessoasIds = pessoasDa(json);
+  const souResponsavel = pessoasIds.includes(String(usuario.id));
   const souCriador = json.criadoPorId === usuario.id;
-  const semResponsavel = !json.responsavelId;
+  const semResponsavel = pessoasIds.length === 0;
   const acao = ACOES_TAREFA[json.tipo] || ACOES_TAREFA.LIVRE;
   return {
     ...json,
+    pessoasIds,
+    pessoas: nomes
+      ? pessoasIds.map((id) => nomes.get(id)).filter(Boolean)
+      : json.responsavel
+        ? [json.responsavel]
+        : [],
     codigo: tarefa.codigo,
     tipoNome: acao.nome,
     pedeNoFeito: acao.pedeNoFeito || null,
@@ -97,7 +116,8 @@ const formatar = (tarefa, usuario) => {
     pode: {
       // Sem responsável: quem criou (ou o admin) pega para si
       aceitar: json.status === "PENDENTE" && (souResponsavel || (semResponsavel && (gestor || souCriador))),
-      recusar: ["PENDENTE", "ACEITA"].includes(json.status) && souResponsavel,
+      // Em grupo não tem recusar: a tarefa segue com as outras pessoas
+      recusar: ["PENDENTE", "ACEITA"].includes(json.status) && souResponsavel && pessoasIds.length === 1,
       feito:
         (json.status === "ACEITA" && souResponsavel) ||
         (semResponsavel && souCriador && json.status === "PENDENTE") ||
@@ -108,12 +128,32 @@ const formatar = (tarefa, usuario) => {
   };
 };
 
+const formatarUma = async (tarefa, usuario) => formatar(tarefa, usuario, await nomesDasPessoas([tarefa]));
+
 const buscarResponsavel = async (responsavelId) => {
   if (!responsavelId) return null;
   const usuario = await Usuario.findByPk(responsavelId, { attributes: ["id", "nome", "ativo"] });
   if (!usuario || !usuario.ativo) throw erroTarefa(400, "Escolha um responsável ativo.");
   return usuario;
 };
+
+// body.responsaveisIds (várias pessoas) ou body.responsavelId (uma, como antes).
+// undefined = não mandou (mantém). [] = ninguém em especial.
+const lerPessoas = async (body) => {
+  let ids;
+  if (Array.isArray(body.responsaveisIds)) ids = body.responsaveisIds;
+  else if (body.responsavelId !== undefined) ids = body.responsavelId ? [body.responsavelId] : [];
+  else return undefined;
+  ids = [...new Set(ids.filter(Boolean).map(String))];
+  if (!ids.length) return [];
+  const usuarios = await Usuario.findAll({ where: { id: ids }, attributes: ["id", "nome", "ativo"] });
+  if (usuarios.length !== ids.length || usuarios.some((u) => !u.ativo)) {
+    throw erroTarefa(400, "Escolha pessoas ativas.");
+  }
+  const porId = new Map(usuarios.map((u) => [String(u.id), u]));
+  return ids.map((id) => porId.get(id));
+};
+const nomesJuntos = (pessoas) => pessoas.map((p) => p.nome).join(", ");
 
 const carregarTarefa = async (id) => {
   const tarefa = await Tarefa.findByPk(id, { include: incluir });
@@ -229,10 +269,15 @@ const tarefaController = {
       const { escopo, status, inicio, fim } = req.query;
       const where = {};
 
-      if (escopo === "minhas") where.responsavelId = usuario.id;
+      // "Minhas" = sou o principal ou estou na lista de pessoas
+      const souDaTarefa = [
+        { responsavelId: usuario.id },
+        { pessoasIds: { [Op.contains]: [String(usuario.id)] } },
+      ];
+      if (escopo === "minhas") where[Op.or] = souDaTarefa;
       else if (escopo === "criadas") where.criadoPorId = usuario.id;
       else if (!(escopo === "todas" && gestor)) {
-        where[Op.or] = [{ responsavelId: usuario.id }, { criadoPorId: usuario.id }];
+        where[Op.or] = [...souDaTarefa, { criadoPorId: usuario.id }];
       }
       if (status === "abertas") where.status = { [Op.in]: ABERTAS };
       else if (status) where.status = status;
@@ -248,7 +293,8 @@ const tarefaController = {
         order: [["data", "ASC"], ["id", "ASC"]],
         limit: 1000,
       });
-      res.json({ gestor, tarefas: tarefas.map((tarefa) => formatar(tarefa, usuario)) });
+      const nomes = await nomesDasPessoas(tarefas);
+      res.json({ gestor, tarefas: tarefas.map((tarefa) => formatar(tarefa, usuario, nomes)) });
     } catch (error) {
       responder(res, error, "Erro ao listar tarefas");
     }
@@ -308,7 +354,7 @@ const tarefaController = {
   async criar(req, res) {
     try {
       const usuario = req.usuario;
-      const { titulo, descricao, tipo = "LIVRE", dados = {}, data, dataFim, responsavelId } = req.body;
+      const { titulo, descricao, tipo = "LIVRE", dados = {}, data, dataFim } = req.body;
 
       if (!TIPOS_TAREFA.includes(tipo)) throw erroTarefa(400, "Tipo de tarefa inválido.");
       if (!DATA_VALIDA.test(data || "")) throw erroTarefa(400, "Escolha o dia da tarefa.");
@@ -317,20 +363,21 @@ const tarefaController = {
       if (acao.rota && !podeUsarRota(usuario, acao.rota)) {
         throw erroTarefa(403, `Você não tem acesso para agendar "${acao.nome}".`);
       }
-      // Vazio = não é para alguém em especial
-      const responsavel = await buscarResponsavel(responsavelId);
+      // Vazio = não é para alguém em especial; várias = a tarefa é do grupo
+      const pessoas = (await lerPessoas(req.body)) || [];
+      const responsavel = pessoas[0] || null;
 
       const preparada = await acao.preparar(dados || {});
       const tituloFinal = String(titulo || "").trim() || preparada.titulo;
       if (!tituloFinal) throw erroTarefa(400, "Escreva o que precisa ser feito.");
 
-      // Tarefa para si mesmo já nasce aceita
-      const paraMim = responsavel?.id === usuario.id;
+      // Tarefa só para si mesmo já nasce aceita
+      const paraMim = pessoas.length === 1 && responsavel.id === usuario.id;
       const historico = [
         registro(
           usuario,
           "CRIADA",
-          `${responsavel ? `Para ${responsavel.nome}` : "Sem responsável"} · ${textoDias(data, ultimoDia)}`,
+          `${pessoas.length ? `Para ${nomesJuntos(pessoas)}` : "Sem responsável"} · ${textoDias(data, ultimoDia)}`,
         ),
         ...(paraMim ? [registro(usuario, "ACEITA")] : []),
       ];
@@ -345,11 +392,12 @@ const tarefaController = {
         lojaId: preparada.lojaId,
         criadoPorId: usuario.id,
         responsavelId: responsavel?.id || null,
+        pessoasIds: pessoas.map((p) => String(p.id)),
         status: paraMim ? "ACEITA" : "PENDENTE",
         aceitaEm: paraMim ? new Date() : null,
         historico,
       });
-      res.status(201).json(formatar(await carregarTarefa(tarefa.id), usuario));
+      res.status(201).json(await formatarUma(await carregarTarefa(tarefa.id), usuario));
     } catch (error) {
       responder(res, error, "Erro ao criar tarefa");
     }
@@ -362,7 +410,7 @@ const tarefaController = {
       const tarefa = await carregarTarefa(req.params.id);
       if (!formatar(tarefa, usuario).pode.editar) throw erroTarefa(403, "Você não pode editar esta tarefa.");
 
-      const { titulo, descricao, data, dataFim, responsavelId } = req.body;
+      const { titulo, descricao, data, dataFim } = req.body;
       const mudancas = {};
       const detalhes = [];
 
@@ -382,23 +430,25 @@ const tarefaController = {
           detalhes.push(`dia ${textoDias(tarefa.data, tarefa.dataFim)} → ${textoDias(novoInicio, novoFim)}`);
         }
       }
-      const novoResponsavelId = responsavelId === undefined ? undefined : responsavelId || null;
-      if (novoResponsavelId !== undefined && novoResponsavelId !== (tarefa.responsavelId || null)) {
-        const responsavel = await buscarResponsavel(novoResponsavelId);
-        const paraMim = responsavel?.id === usuario.id;
+      const novasPessoas = await lerPessoas(req.body);
+      const atuais = pessoasDa(tarefa.toJSON());
+      if (novasPessoas !== undefined && novasPessoas.map((p) => String(p.id)).join(",") !== atuais.join(",")) {
+        const responsavel = novasPessoas[0] || null;
+        const paraMim = novasPessoas.length === 1 && responsavel.id === usuario.id;
         Object.assign(mudancas, {
           responsavelId: responsavel?.id || null,
+          pessoasIds: novasPessoas.map((p) => String(p.id)),
           status: paraMim ? "ACEITA" : "PENDENTE",
           aceitaEm: paraMim ? new Date() : null,
           motivoRecusa: null,
         });
-        detalhes.push(responsavel ? `agora é para ${responsavel.nome}` : "agora sem responsável");
+        detalhes.push(novasPessoas.length ? `agora é para ${nomesJuntos(novasPessoas)}` : "agora sem responsável");
       }
 
-      if (Object.keys(mudancas).length === 0) return res.json(formatar(tarefa, usuario));
+      if (Object.keys(mudancas).length === 0) return res.json(await formatarUma(tarefa, usuario));
       mudancas.historico = comHistorico(tarefa, registro(usuario, "EDITADA", detalhes.join("; ") || null));
       await tarefa.update(mudancas);
-      res.json(formatar(await carregarTarefa(tarefa.id), usuario));
+      res.json(await formatarUma(await carregarTarefa(tarefa.id), usuario));
     } catch (error) {
       responder(res, error, "Erro ao editar tarefa");
     }
@@ -413,9 +463,10 @@ const tarefaController = {
         status: "ACEITA",
         aceitaEm: new Date(),
         responsavelId: tarefa.responsavelId || usuario.id,
+        pessoasIds: pessoasDa(tarefa.toJSON()).length ? pessoasDa(tarefa.toJSON()) : [String(usuario.id)],
         historico: comHistorico(tarefa, registro(usuario, "ACEITA")),
       });
-      res.json(formatar(await carregarTarefa(tarefa.id), usuario));
+      res.json(await formatarUma(await carregarTarefa(tarefa.id), usuario));
     } catch (error) {
       responder(res, error, "Erro ao aceitar tarefa");
     }
@@ -433,7 +484,7 @@ const tarefaController = {
         motivoRecusa: motivo,
         historico: comHistorico(tarefa, registro(usuario, "RECUSADA", motivo)),
       });
-      res.json(formatar(await carregarTarefa(tarefa.id), usuario));
+      res.json(await formatarUma(await carregarTarefa(tarefa.id), usuario));
     } catch (error) {
       responder(res, error, "Erro ao recusar tarefa");
     }
@@ -484,7 +535,7 @@ const tarefaController = {
           registro(usuario, "FEITA", [resultado?.mensagem, observacao].filter(Boolean).join(" · ") || null),
         ),
       });
-      res.json(formatar(await carregarTarefa(tarefa.id), usuario));
+      res.json(await formatarUma(await carregarTarefa(tarefa.id), usuario));
     } catch (error) {
       responder(res, error, "Erro ao marcar tarefa como feita");
     }
@@ -500,7 +551,7 @@ const tarefaController = {
         status: "CANCELADA",
         historico: comHistorico(tarefa, registro(usuario, "CANCELADA", motivo || null)),
       });
-      res.json(formatar(await carregarTarefa(tarefa.id), usuario));
+      res.json(await formatarUma(await carregarTarefa(tarefa.id), usuario));
     } catch (error) {
       responder(res, error, "Erro ao cancelar tarefa");
     }

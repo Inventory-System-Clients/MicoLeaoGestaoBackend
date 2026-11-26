@@ -15,7 +15,7 @@ import {
   Compra,
   Fornecedor,
 } from "../models/index.js";
-import { sincronizarTarefasAutomaticas, filtroPeriodoTarefa, prazoDaTarefa } from "./tarefaController.js";
+import { sincronizarTarefasAutomaticas, filtroPeriodoTarefa, prazoDaTarefa, nomesDasPessoas } from "./tarefaController.js";
 import { hojeBrasilia } from "../services/tarefaAcoes.js";
 
 // Calendário (Análise > Calendário, admin): junta tudo o que tem data no
@@ -138,6 +138,13 @@ const calendarioController = {
         }),
       ]);
 
+      const nomesPessoas = await nomesDasPessoas(tarefas);
+      const paraQuem = (tarefa) => {
+        const ids = [...new Set([tarefa.responsavelId, ...(tarefa.pessoasIds || [])].filter(Boolean).map(String))];
+        const nomes = ids.map((id) => nomesPessoas.get(id)?.nome).filter(Boolean);
+        return nomes.length ? `Para ${nomes.join(", ")}` : "Sem responsável";
+      };
+
       // Extintor e contrato que já viraram tarefa aparecem só como tarefa
       const origens = new Set(tarefas.map((tarefa) => tarefa.origem).filter(Boolean));
 
@@ -146,7 +153,7 @@ const calendarioController = {
           id: `tarefa-${tarefa.id}`,
           categoria: "tarefa",
           titulo: `${tarefa.codigo} · ${tarefa.titulo}`,
-          detalhe: `${tarefa.responsavel ? `Para ${tarefa.responsavel.nome}` : "Sem responsável"} · ${STATUS_TAREFA[tarefa.status] || tarefa.status}`,
+          detalhe: `${paraQuem(tarefa)} · ${STATUS_TAREFA[tarefa.status] || tarefa.status}`,
           data: tarefa.data,
           dataFim: tarefa.dataFim || undefined,
           status: tarefa.status,
