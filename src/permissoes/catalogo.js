@@ -78,6 +78,16 @@ export const CATALOGO = [
       },
       { chave: "lojas.excluir", nome: "Excluir loja", rotas: ["DELETE /api/lojas/:id"] },
       {
+        chave: "lojas.documentos",
+        nome: "Ver, enviar e remover PDFs da loja (contratos)",
+        rotas: [
+          "GET /api/lojas/:id/documentos",
+          "POST /api/lojas/:id/documentos",
+          "DELETE /api/lojas/:id/documentos/:documentoId",
+        ],
+        requer: ["lojas.ver"],
+      },
+      {
         chave: "lojas.visaoGeral",
         // Desde 2026-11-26 é a lista de lojas do menu (a antiga /lojas redireciona pra cá)
         nome: "Ver lista de lojas (Visão das Lojas)",
@@ -149,6 +159,16 @@ export const CATALOGO = [
         chave: "projetosLoja.excluir",
         nome: "Excluir projeto de loja",
         rotas: ["DELETE /api/projetos-loja/:id"],
+      },
+      {
+        chave: "projetosLoja.documentos",
+        nome: "Ver, enviar e remover PDFs do projeto",
+        rotas: [
+          "GET /api/projetos-loja/:id/documentos",
+          "POST /api/projetos-loja/:id/documentos",
+          "DELETE /api/projetos-loja/:id/documentos/:documentoId",
+        ],
+        requer: ["projetosLoja.ver"],
       },
     ],
   },

@@ -6,6 +6,7 @@ import {
   atualizarLoja,
   deletarLoja,
 } from "../controllers/lojaController.js";
+import { documentosDe } from "../controllers/documentoController.js";
 import {
   autenticar,
   autorizarRole,
@@ -15,6 +16,25 @@ import {
 const router = express.Router();
 
 router.get("/", autenticar, listarLojas);
+
+// Documentos em PDF da loja (contratos): quem cadastra/edita loja
+const documentosLoja = documentosDe("LOJA");
+const podeDocumentosLoja = autorizarRole("ADMIN", "FUNCIONARIO_CADASTRO");
+router.get("/:id/documentos", autenticar, podeDocumentosLoja, documentosLoja.listar);
+router.post(
+  "/:id/documentos",
+  autenticar,
+  podeDocumentosLoja,
+  registrarLog("ENVIAR_DOCUMENTO_LOJA", "Documento"),
+  documentosLoja.criar
+);
+router.delete(
+  "/:id/documentos/:documentoId",
+  autenticar,
+  podeDocumentosLoja,
+  registrarLog("REMOVER_DOCUMENTO_LOJA", "Documento"),
+  documentosLoja.excluir
+);
 router.get("/:id", autenticar, obterLoja);
 router.post(
   "/",

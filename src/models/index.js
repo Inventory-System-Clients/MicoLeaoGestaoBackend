@@ -68,6 +68,7 @@ import LancamentoMeta from "./LancamentoMeta.js";
 import Tarefa from "./Tarefa.js";
 import PeriodoCalendario from "./PeriodoCalendario.js";
 import Shopping from "./Shopping.js";
+import Documento from "./Documento.js";
 // MovimentaÃ§Ã£o de VeÃ­culo -> VeÃ­culo e UsuÃ¡rio
 MovimentacaoVeiculo.belongsTo(Veiculo, {
   as: "veiculo",
@@ -101,6 +102,9 @@ Maquina.belongsTo(Loja, { foreignKey: "lojaId", as: "loja" });
 // Shopping -> lojas e máquinas avulsas (Loja com tipo AVULSA)
 Shopping.hasMany(Loja, { foreignKey: "shoppingId", as: "lojas" });
 Loja.belongsTo(Shopping, { foreignKey: "shoppingId", as: "shopping" });
+// Documentos em PDF (contrato da loja, documentos do projeto)
+Documento.belongsTo(Usuario, { foreignKey: "enviadoPorId", as: "enviadoPor" });
+
 // Estoque emprestado: loja que usa o estoque de outra
 Loja.belongsTo(Loja, { foreignKey: "estoqueLojaId", as: "lojaDoEstoque" });
 
@@ -775,6 +779,7 @@ ProjetoLojaMaquinaHistorico.belongsTo(Usuario, {
 
 export {
   Shopping,
+  Documento,
   Usuario,
   Loja,
   Maquina,
