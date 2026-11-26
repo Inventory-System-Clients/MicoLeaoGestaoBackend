@@ -1,6 +1,7 @@
 import { Op } from "sequelize";
 import { sequelize } from "../database/connection.js";
 import {
+  Compra,
   EstoquePecaFuncionario,
   GastoVariavel,
   Loja,
@@ -10,8 +11,12 @@ import {
   ManutencaoPecaQuebrada,
   ManutencaoUsuario,
   Peca,
+  SugestaoCompra,
+  SugestaoCompraItem,
   Usuario,
+  UsuarioLoja,
 } from "../models/index.js";
+import { randomUUID } from "node:crypto";
 import { normalizarStatusOperacao } from "./maquinaController.js";
 import { temAcao, ehPerfilAcessoTotal, lerAjustes } from "../permissoes/acessos.js";
 
@@ -177,7 +182,10 @@ const sincronizarStatusMaquina = async (maquinaId, transaction) => {
   if (!maquina) return;
 
   const manutencoesAbertas = await Manutencao.count({
-    where: { maquinaId, status: { [Op.in]: STATUS_ABERTOS } },
+    where: {
+      status: { [Op.in]: STATUS_ABERTOS },
+      [Op.or]: [{ maquinaId }, { ocorrencias: { [Op.contains]: [{ maquinaId }] } }],
+    },
     transaction,
   });
 
@@ -196,6 +204,11 @@ const sincronizarStatusMaquina = async (maquinaId, transaction) => {
     await maquina.update({ statusOperacao: statusRestaurado }, { transaction });
   }
 };
+
+// Máquinas da manutenção: a principal e as das ocorrências juntadas
+const maquinasDaManutencao = (manutencao) => [
+  ...new Set([manutencao.maquinaId, ...(manutencao.ocorrencias || []).map((o) => o.maquinaId)].filter(Boolean)),
+];
 
 // Avalia se a máquina está com manutenção repetida (recorrente).
 const avaliarRecorrencia = async (maquinaId, tipoProblema, transaction) => {
@@ -634,6 +647,14 @@ const podeAutorizar = (usuario) => {
   return usuario?.role === "FUNCIONARIO_CADASTRO" || adicionadas.includes("manutencao.autorizar");
 };
 
+const dataBr = (data) => (data ? String(data).slice(0, 10).split("-").reverse().join("/") : "");
+const somarDias = (data, dias) => {
+  const d = new Date(`${String(data).slice(0, 10)}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + dias);
+  return d.toISOString().slice(0, 10);
+};
+const hojeBrasilia = () => new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
 const eventoHistorico = (usuario, acao, status, detalhe = null) => ({
   acao,
   status,
@@ -732,23 +753,93 @@ const podeVerPendente = (manutencao, usuario) => {
   );
 };
 
-// Junta { id, nome, role } das pessoas do destino (destinatariosIds)
-const comDestinatarios = async (manutencoes) => {
+// Lojas do usuário (cadastro); null = todas (lojas.todas)
+const lojasDoUsuario = async (usuario) => {
+  if (temAcao(usuario, "lojas.todas")) return null;
+  const vinculos = await UsuarioLoja.findAll({ where: { usuarioId: usuario.id }, attributes: ["lojaId"] });
+  return vinculos.map((v) => v.lojaId);
+};
+
+// Consultor e Gestor de vendas aceitam as manutenções das lojas deles
+const PERFIS_ACEITAM_NA_LOJA = ["CONSULTOR_VENDAS", "GERENTE_VENDAS"];
+const STATUS_EM_ANDAMENTO = ["SOLICITADA", "PENDENTE", "ACEITA", "AGUARDANDO"];
+
+const ehChefeDoSetor = (manutencao, usuario) =>
+  Boolean(usuario?.chefeSetor && manutencao.setor && manutencao.setor === usuario.role);
+
+// O que o usuário pode fazer nesta manutenção (a tela usa pra mostrar os botões)
+const acoesDaManutencao = (manutencao, usuario, lojas) => {
+  const gestao = temAcao(usuario, "manutencao.gerenciarTodas");
+  const naMinhaLoja = Boolean(manutencao.lojaId) && (lojas === null || (lojas || []).includes(manutencao.lojaId));
+  const paraMim = podeVerPendente(manutencao, usuario);
+  const chefe = ehChefeDoSetor(manutencao, usuario);
+  const envolvido =
+    manutencao.criadoPorId === usuario.id || manutencao.aceitaPorId === usuario.id || paraMim || chefe;
+  const emAndamento = STATUS_EM_ANDAMENTO.includes(manutencao.status);
+  const podeAceitar =
+    manutencao.status === "PENDENTE" &&
+    (paraMim || chefe || gestao || (PERFIS_ACEITAM_NA_LOJA.includes(usuario.role) && naMinhaLoja));
+  return {
+    podeAceitar,
+    podeDesignar: ["PENDENTE", "AGUARDANDO"].includes(manutencao.status) && chefe,
+    podeOcorrencia: emAndamento && (gestao || envolvido || naMinhaLoja),
+    podeEditar:
+      !["FINALIZADA", "RECUSADA"].includes(manutencao.status) &&
+      (gestao || (manutencao.criadoPorId === usuario.id && ["SOLICITADA", "PENDENTE"].includes(manutencao.status))),
+    podePecas:
+      emAndamento &&
+      manutencao.status !== "SOLICITADA" &&
+      (gestao || chefe || manutencao.aceitaPorId === usuario.id || manutencao.criadoPorId === usuario.id),
+    chefe,
+    // Só vê porque é da loja dele (não está na manutenção)
+    acompanhando: !gestao && !envolvido && !podeAceitar,
+  };
+};
+
+// Junta { id, nome, role } das pessoas do destino (destinatariosIds), o
+// andamento dos pedidos de compra das peças e as ações do usuário
+const comDestinatarios = async (manutencoes, usuario = null) => {
   const lista = manutencoes.map((m) => (m.toJSON ? m.toJSON() : m));
   const ids = [...new Set(lista.flatMap((m) => m.destinatariosIds || []).map(String))];
-  const pessoas = ids.length
-    ? await Usuario.findAll({ where: { id: ids }, attributes: ["id", "nome", "role"] })
-    : [];
+  const idsSugestoes = [
+    ...new Set(lista.flatMap((m) => (m.pecasNecessarias || []).map((p) => p.sugestaoCompraId)).filter(Boolean)),
+  ];
+  const [pessoas, sugestoes, lojas] = await Promise.all([
+    ids.length ? Usuario.findAll({ where: { id: ids }, attributes: ["id", "nome", "role"] }) : [],
+    idsSugestoes.length
+      ? SugestaoCompra.findAll({
+          where: { id: idsSugestoes },
+          attributes: ["id", "status", "resposta"],
+          include: [{ model: Compra, as: "compraGerada", attributes: ["id", "status"] }],
+        })
+      : [],
+    usuario ? lojasDoUsuario(usuario) : [],
+  ]);
   const porId = new Map(pessoas.map((p) => [String(p.id), p.toJSON()]));
+  const sugestaoPorId = new Map(sugestoes.map((s) => [String(s.id), s.toJSON()]));
   return lista.map((m) => ({
     ...m,
     destinatarios: (m.destinatariosIds || []).map((id) => porId.get(String(id))).filter(Boolean),
+    pecasNecessarias: (m.pecasNecessarias || []).map((p) => {
+      const sugestao = p.sugestaoCompraId ? sugestaoPorId.get(String(p.sugestaoCompraId)) : null;
+      return sugestao
+        ? {
+            ...p,
+            compra: {
+              sugestaoStatus: sugestao.status,
+              resposta: sugestao.resposta,
+              compraStatus: sugestao.compraGerada?.status || null,
+            },
+          }
+        : p;
+    }),
+    acoes: usuario ? acoesDaManutencao(m, usuario, lojas) : undefined,
   }));
 };
 
-const responderComManutencao = async (res, id) => {
+const responderComManutencao = async (res, id, usuario = null) => {
   const atualizada = await Manutencao.findByPk(id, { include: includeAdmin });
-  res.json(atualizada ? (await comDestinatarios([atualizada]))[0] : atualizada);
+  res.json(atualizada ? (await comDestinatarios([atualizada], usuario))[0] : atualizada);
 };
 
 // Executa uma ação do fluxo numa transação: `regra` devolve { erro, status }
@@ -771,10 +862,13 @@ const executarAcao = (nomeAcao, regra) => async (req, res) => {
       { ...dados, historico: [...(manutencao.historico || []), evento] },
       { transaction },
     );
-    await sincronizarStatusMaquina(manutencao.maquinaId, transaction);
+    const maquinasAntes = resultado.maquinasAntes || [];
+    for (const maquinaId of new Set([...maquinasAntes, ...maquinasDaManutencao(manutencao)])) {
+      await sincronizarStatusMaquina(maquinaId, transaction);
+    }
     await transaction.commit();
     res.locals.entityId = manutencao.id;
-    return responderComManutencao(res, manutencao.id);
+    return responderComManutencao(res, manutencao.id, req.usuario);
   } catch (error) {
     await transaction.rollback();
     console.error(`Erro ao ${nomeAcao} manutenção:`, error);
@@ -823,12 +917,26 @@ export const aceitarManutencao = executarAcao("aceitar", async ({ manutencao, re
   if (manutencao.status !== "PENDENTE") {
     return { erro: "Essa manutenção já foi aceita por outra pessoa.", status: 409 };
   }
-  if (!podeVerPendente(manutencao, req.usuario) && !temAcao(req.usuario, "manutencao.gerenciarTodas")) {
+  const acoes = acoesDaManutencao(manutencao, req.usuario, await lojasDoUsuario(req.usuario));
+  if (!acoes.podeAceitar) {
     return { erro: "Essa manutenção não foi enviada para você.", status: 403 };
   }
+  // Dia que vai fazer: obrigatório quando tem peça pedida para compra
+  const dataPrevista = String(req.body?.dataPrevista || "").trim();
+  const esperaPeca = (manutencao.pecasNecessarias || []).some((p) => p.situacao === "COMPRA_SOLICITADA");
+  if (dataPrevista && !/^\d{4}-\d{2}-\d{2}$/.test(dataPrevista)) return { erro: "Dia inválido." };
+  if (!dataPrevista && esperaPeca) {
+    return { erro: "Tem peça pedida para compra: informe o dia que você vai fazer a manutenção." };
+  }
   return {
-    dados: { status: "ACEITA", aceitaPorId: req.usuario.id, aceitaEm: new Date(), motivoAguardando: null },
-    evento: eventoHistorico(req.usuario, "ACEITA", "ACEITA"),
+    dados: {
+      status: "ACEITA",
+      aceitaPorId: req.usuario.id,
+      aceitaEm: new Date(),
+      motivoAguardando: null,
+      dataPrevista: dataPrevista || null,
+    },
+    evento: eventoHistorico(req.usuario, "ACEITA", "ACEITA", dataPrevista ? `Vai fazer em ${dataBr(dataPrevista)}` : null),
   };
 });
 
@@ -955,16 +1063,26 @@ export const listarManutencoes = async (req, res) => {
     let include = [...includeAdmin];
     const where = {};
 
+    // Histórico: as finalizadas (feitas e com o gasto lançado)
+    const historico = req.query.historico === "1" || req.query.historico === "true";
+    const lojas = await lojasDoUsuario(req.usuario);
     if (!temAcao(req.usuario, "manutencao.gerenciarTodas")) {
       // Pendente: quem é do setor (ou a pessoa escolhida). Depois de aceita,
       // só quem aceitou. Quem abriu acompanha a sua até ser finalizada.
-      // Finalizada some; recusada fica 7 dias pra quem pediu ver o motivo
-      where.status = { [Op.ne]: "FINALIZADA" };
-      const seteDiasAtras = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-      where[Op.and] = [
-        { [Op.or]: [{ status: { [Op.ne]: "RECUSADA" } }, { autorizadaEm: { [Op.gte]: seteDiasAtras } }] },
-      ];
+      // Todo mundo vê (acompanha) as das lojas dele. O chefe vê as do setor.
+      // Finalizada vai pro histórico; recusada fica 7 dias pra quem pediu ver o motivo
+      if (historico) {
+        where.status = "FINALIZADA";
+      } else {
+        where.status = { [Op.ne]: "FINALIZADA" };
+        const seteDiasAtras = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+        where[Op.and] = [
+          { [Op.or]: [{ status: { [Op.ne]: "RECUSADA" } }, { autorizadaEm: { [Op.gte]: seteDiasAtras } }] },
+        ];
+      }
       where[Op.or] = [
+        ...(lojas === null ? [{ lojaId: { [Op.ne]: null } }] : lojas.length ? [{ lojaId: lojas }] : []),
+        ...(req.usuario.chefeSetor ? [{ setor: req.usuario.role }] : []),
         { aceitaPorId: req.usuario.id },
         { criadoPorId: req.usuario.id },
         { status: "PENDENTE", destinatarioId: req.usuario.id },
@@ -978,7 +1096,9 @@ export const listarManutencoes = async (req, res) => {
         item.as === "funcionariosPermitidos" ? { ...item, required: false } : item,
       );
     } else {
-      if (status && STATUS_VALIDOS.includes(status)) {
+      if (historico) {
+        where.status = "FINALIZADA";
+      } else if (status && STATUS_VALIDOS.includes(status)) {
         where.status = status;
       }
 
@@ -1022,10 +1142,11 @@ export const listarManutencoes = async (req, res) => {
       where,
       include,
       subQuery: false,
-      order: [["createdAt", "DESC"]],
+      order: historico ? [["finalizadaEm", "DESC NULLS LAST"], ["createdAt", "DESC"]] : [["createdAt", "DESC"]],
     });
 
-    res.json(await comDestinatarios(manutencoes));
+    // Histórico: as 300 mais recentes
+    res.json(await comDestinatarios(historico ? manutencoes.slice(0, 300) : manutencoes, req.usuario));
   } catch (error) {
     console.error("Erro ao listar manutenções:", error);
     res.status(500).json({ error: "Erro ao listar manutenções" });
@@ -1399,3 +1520,303 @@ export const obterHistoricoMaquina = async (req, res) => {
       .json({ error: "Erro ao obter histórico de manutenção da máquina" });
   }
 };
+
+// ---------- Editar, ocorrências, chefe do setor e peças ----------
+
+// Editar: quem abriu (antes de alguém aceitar) ou a gestão
+export const editarManutencao = executarAcao("editar", async ({ manutencao, req }) => {
+  const acoes = acoesDaManutencao(manutencao, req.usuario, await lojasDoUsuario(req.usuario));
+  if (!acoes.podeEditar) return { erro: "Você não pode editar essa manutenção.", status: 403 };
+  const dados = {};
+  const mudou = [];
+  const titulo = req.body?.titulo !== undefined ? String(req.body.titulo).trim() : undefined;
+  const descricao = req.body?.descricao !== undefined ? String(req.body.descricao).trim() : undefined;
+  if (titulo !== undefined && titulo !== manutencao.titulo) {
+    if (titulo.length < 3) return { erro: "Escreva um resumo do problema." };
+    dados.titulo = titulo.slice(0, 150);
+    mudou.push("resumo");
+  }
+  if (descricao !== undefined && descricao !== manutencao.descricao) {
+    if (descricao.length < 3) return { erro: "Conte os detalhes do problema." };
+    dados.descricao = descricao;
+    mudou.push("detalhes");
+  }
+  if (req.body?.tipoProblema !== undefined && (req.body.tipoProblema || null) !== manutencao.tipoProblema) {
+    dados.tipoProblema = req.body.tipoProblema || null;
+    mudou.push("tipo");
+  }
+  if (req.body?.prazo !== undefined && (req.body.prazo || null) !== (manutencao.prazo || null)) {
+    if (req.body.prazo && !/^\d{4}-\d{2}-\d{2}$/.test(req.body.prazo)) return { erro: "Prazo inválido." };
+    dados.prazo = req.body.prazo || null;
+    mudou.push(req.body.prazo ? `prazo para ${dataBr(req.body.prazo)}` : "prazo removido");
+  }
+  if (!mudou.length) return { erro: "Nada mudou." };
+  return { dados, evento: eventoHistorico(req.usuario, "EDITADA", manutencao.status, `Mudou: ${mudou.join(", ")}`) };
+});
+
+// Junta outro problema da mesma loja numa manutenção ainda não resolvida
+export const adicionarOcorrenciaManutencao = executarAcao("juntar ocorrência na", async ({ manutencao, req, transaction }) => {
+  const acoes = acoesDaManutencao(manutencao, req.usuario, await lojasDoUsuario(req.usuario));
+  if (!STATUS_EM_ANDAMENTO.includes(manutencao.status)) {
+    return { erro: "Essa manutenção já foi resolvida. Abra uma nova.", status: 409 };
+  }
+  if (!acoes.podeOcorrencia) return { erro: "Você não pode mexer nessa manutenção.", status: 403 };
+  const descricao = String(req.body?.descricao || "").trim();
+  if (descricao.length < 3) return { erro: "Conte o que aconteceu." };
+  let maquina = null;
+  if (req.body?.maquinaId) {
+    maquina = await Maquina.findByPk(req.body.maquinaId, { attributes: ["id", "codigo", "lojaId"], transaction });
+    if (!maquina || (manutencao.lojaId && maquina.lojaId !== manutencao.lojaId)) {
+      return { erro: "Essa máquina não é da loja da manutenção." };
+    }
+  }
+  const ocorrencia = {
+    id: randomUUID(),
+    descricao: descricao.slice(0, 2000),
+    maquinaId: maquina?.id || null,
+    maquinaCodigo: maquina?.codigo || null,
+    tipoProblema: req.body?.tipoProblema || null,
+    usuarioId: req.usuario.id,
+    usuarioNome: req.usuario.nome,
+    em: new Date().toISOString(),
+  };
+  return {
+    dados: { ocorrencias: [...(manutencao.ocorrencias || []), ocorrencia] },
+    evento: eventoHistorico(
+      req.usuario,
+      "OCORRENCIA",
+      manutencao.status,
+      `${maquina ? `Máquina ${maquina.codigo}: ` : ""}${descricao.slice(0, 250)}`,
+    ),
+  };
+});
+
+// Chefe do setor: escolhe quem do setor faz (ou ele mesmo)
+export const designarManutencao = executarAcao("designar", async ({ manutencao, req, transaction }) => {
+  const chefe = ehChefeDoSetor(manutencao, req.usuario);
+  const gestao = temAcao(req.usuario, "manutencao.gerenciarTodas");
+  if (!chefe && !gestao) return { erro: "Só o chefe do setor escolhe quem faz.", status: 403 };
+  if (!["PENDENTE", "AGUARDANDO"].includes(manutencao.status)) {
+    return { erro: "Essa manutenção já está com alguém.", status: 409 };
+  }
+  const destino = await validarDestino({ destinatariosIds: req.body?.destinatariosIds, transaction });
+  if (destino.erro || !destino.destinatarioId) return { erro: destino.erro || "Escolha quem vai fazer." };
+  if (chefe && !gestao) {
+    const pessoas = await Usuario.findAll({ where: { id: destino.destinatariosIds }, attributes: ["id", "role"], transaction });
+    if (pessoas.some((p) => p.role !== manutencao.setor)) return { erro: "Escolha pessoas do seu setor." };
+  }
+  return {
+    dados: {
+      status: "PENDENTE",
+      setor: manutencao.setor || destino.setor,
+      destinatarioId: destino.destinatarioId,
+      destinatariosIds: destino.destinatariosIds,
+      aceitaPorId: null,
+      aceitaEm: null,
+      dataPrevista: null,
+    },
+    evento: eventoHistorico(req.usuario, "DESIGNADA", "PENDENTE", `Para ${destino.rotulo}`),
+  };
+});
+
+// Quem vai usar as peças: quem aceitou, senão a 1ª pessoa escolhida, senão quem pergunta
+const executorDaManutencao = (manutencao, usuario) =>
+  manutencao.aceitaPorId || manutencao.destinatarioId || usuario.id;
+
+// Estoque das peças para a manutenção: central (depósito) + carrinho de quem vai fazer
+const estoqueDasPecas = async (executorId, transaction) => {
+  const [pecas, carrinho] = await Promise.all([
+    Peca.findAll({
+      where: { ativo: true },
+      attributes: ["id", "codigo", "nome", "unidade", "quantidadeEstoque"],
+      order: [["nome", "ASC"]],
+      transaction,
+    }),
+    EstoquePecaFuncionario.findAll({ where: { funcionarioId: executorId }, attributes: ["pecaId", "quantidade"], transaction }),
+  ]);
+  const noCarrinho = new Map(carrinho.map((c) => [String(c.pecaId), Number(c.quantidade) || 0]));
+  return pecas.map((p) => {
+    const central = Number(p.quantidadeEstoque) || 0;
+    const comExecutor = noCarrinho.get(String(p.id)) || 0;
+    return { id: p.id, codigo: p.codigo, nome: p.nome, unidade: p.unidade, central, carrinho: comExecutor, disponivel: central + comExecutor };
+  });
+};
+
+export const listarPecasDisponiveisManutencao = async (req, res) => {
+  try {
+    const manutencao = await Manutencao.findByPk(req.params.id);
+    if (!manutencao) return res.status(404).json({ error: "Manutenção não encontrada" });
+    const executorId = executorDaManutencao(manutencao, req.usuario);
+    const [executor, pecas] = await Promise.all([
+      Usuario.findByPk(executorId, { attributes: ["id", "nome"] }),
+      estoqueDasPecas(executorId),
+    ]);
+    // Já separadas nesta manutenção (em estoque) não contam de novo
+    const separadas = new Map();
+    for (const item of manutencao.pecasNecessarias || []) {
+      if (item.situacao === "EM_ESTOQUE" && item.pecaId) {
+        separadas.set(String(item.pecaId), (separadas.get(String(item.pecaId)) || 0) + Number(item.quantidade || 0));
+      }
+    }
+    res.json({
+      executor,
+      pecas: pecas.map((p) => {
+        const jaSeparada = separadas.get(String(p.id)) || 0;
+        return { ...p, jaSeparada, livre: Math.max(0, p.disponivel - jaSeparada) };
+      }),
+    });
+  } catch (error) {
+    console.error("Erro ao listar peças disponíveis:", error);
+    res.status(500).json({ error: "Erro ao carregar o estoque de peças" });
+  }
+};
+
+const quantidadeInteira = (valor) => {
+  const numero = Number(valor);
+  return Number.isInteger(numero) && numero > 0 ? numero : null;
+};
+
+// Adiciona uma peça que a manutenção precisa, só se tiver no estoque
+export const adicionarPecaNecessariaManutencao = executarAcao("adicionar peça na", async ({ manutencao, req, transaction }) => {
+  const acoes = acoesDaManutencao(manutencao, req.usuario, await lojasDoUsuario(req.usuario));
+  if (!acoes.podePecas) return { erro: "Você não pode adicionar peças nessa manutenção.", status: 403 };
+  const quantidade = quantidadeInteira(req.body?.quantidade);
+  if (!req.body?.pecaId) return { erro: "Escolha a peça." };
+  if (!quantidade) return { erro: "Informe a quantidade (número inteiro maior que zero)." };
+  const estoque = await estoqueDasPecas(executorDaManutencao(manutencao, req.usuario), transaction);
+  const peca = estoque.find((p) => String(p.id) === String(req.body.pecaId));
+  if (!peca) return { erro: "Peça não encontrada." };
+  const jaSeparada = (manutencao.pecasNecessarias || [])
+    .filter((i) => i.situacao === "EM_ESTOQUE" && String(i.pecaId) === String(peca.id))
+    .reduce((soma, i) => soma + Number(i.quantidade || 0), 0);
+  const livre = peca.disponivel - jaSeparada;
+  if (livre < quantidade) {
+    return {
+      erro: `Não tem ${peca.nome} suficiente no estoque (tem ${Math.max(0, livre)}, precisa de ${quantidade}). Peça a compra.`,
+      status: 409,
+    };
+  }
+  const item = {
+    id: randomUUID(),
+    pecaId: peca.id,
+    nome: peca.nome,
+    codigo: peca.codigo,
+    unidade: peca.unidade,
+    quantidade,
+    observacao: String(req.body?.observacao || "").trim().slice(0, 300) || null,
+    situacao: "EM_ESTOQUE",
+    adicionadoPorId: req.usuario.id,
+    adicionadoPorNome: req.usuario.nome,
+    em: new Date().toISOString(),
+  };
+  return {
+    dados: { pecasNecessarias: [...(manutencao.pecasNecessarias || []), item] },
+    evento: eventoHistorico(req.usuario, "PECA_ADICIONADA", manutencao.status, `${quantidade}× ${peca.nome} (tem no estoque)`),
+  };
+});
+
+export const removerPecaNecessariaManutencao = executarAcao("tirar peça da", async ({ manutencao, req }) => {
+  const acoes = acoesDaManutencao(manutencao, req.usuario, await lojasDoUsuario(req.usuario));
+  if (!acoes.podePecas) return { erro: "Você não pode mexer nas peças dessa manutenção.", status: 403 };
+  const item = (manutencao.pecasNecessarias || []).find((i) => i.id === req.params.itemId);
+  if (!item) return { erro: "Peça não encontrada nessa manutenção.", status: 404 };
+  return {
+    dados: { pecasNecessarias: (manutencao.pecasNecessarias || []).filter((i) => i.id !== item.id) },
+    evento: eventoHistorico(
+      req.usuario,
+      "PECA_REMOVIDA",
+      manutencao.status,
+      `${item.quantidade}× ${item.nome}${item.sugestaoCompraId ? " (o pedido de compra continua em Sugestões de compra)" : ""}`,
+    ),
+  };
+});
+
+// Peça que não tem: vira sugestão de compra; o prazo passa a ser o dia em que
+// a peça chega + 1 (ou o informado) e a manutenção volta para quem estava com
+// ela aceitar de novo, dizendo o dia que vai fazer
+export const pedirCompraPecaManutencao = executarAcao("pedir compra de peça na", async ({ manutencao, req, transaction }) => {
+  const acoes = acoesDaManutencao(manutencao, req.usuario, await lojasDoUsuario(req.usuario));
+  if (!acoes.podePecas) return { erro: "Você não pode pedir peças nessa manutenção.", status: 403 };
+  const quantidade = quantidadeInteira(req.body?.quantidade);
+  if (!quantidade) return { erro: "Informe a quantidade (número inteiro maior que zero)." };
+  const previsaoChegada = String(req.body?.previsaoChegada || "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(previsaoChegada)) return { erro: "Informe o dia que a peça deve chegar." };
+  if (previsaoChegada < hojeBrasilia()) return { erro: "O dia da chegada não pode ser no passado." };
+  const prazo = String(req.body?.prazo || "").trim() || somarDias(previsaoChegada, 1);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(prazo)) return { erro: "Prazo inválido." };
+  if (prazo < previsaoChegada) return { erro: "O novo prazo tem que ser depois da chegada da peça." };
+
+  let peca = null;
+  if (req.body?.pecaId) {
+    peca = await Peca.findByPk(req.body.pecaId, { attributes: ["id", "codigo", "nome", "unidade"], transaction });
+    if (!peca) return { erro: "Peça não encontrada." };
+  }
+  const nomeItem = peca ? peca.nome : String(req.body?.nomeItem || "").trim();
+  if (nomeItem.length < 2) return { erro: "Escolha a peça ou escreva o nome dela." };
+
+  const onde = manutencao.lojaId ? (await Loja.findByPk(manutencao.lojaId, { attributes: ["nome"], transaction }))?.nome : null;
+  const observacao = String(req.body?.observacao || "").trim();
+  const sugestao = await SugestaoCompra.create(
+    {
+      observacao: `Peça para a manutenção "${manutencao.titulo}"${onde ? ` (${onde})` : ""}. Precisa chegar até ${dataBr(previsaoChegada)}.${observacao ? ` ${observacao}` : ""}`.slice(0, 2000),
+      criadoPorId: req.usuario.id,
+    },
+    { transaction },
+  );
+  await SugestaoCompraItem.create(
+    {
+      sugestaoCompraId: sugestao.id,
+      tipoItem: "PECA",
+      pecaId: peca?.id || null,
+      itemNovo: !peca,
+      nomeItem,
+      quantidade,
+      unidade: peca?.unidade || null,
+      lojaId: manutencao.lojaId || null,
+      descricaoUso: `Manutenção: ${manutencao.titulo}`.slice(0, 255),
+    },
+    { transaction },
+  );
+
+  const item = {
+    id: randomUUID(),
+    pecaId: peca?.id || null,
+    nome: nomeItem,
+    codigo: peca?.codigo || null,
+    unidade: peca?.unidade || null,
+    quantidade,
+    observacao: observacao.slice(0, 300) || null,
+    situacao: "COMPRA_SOLICITADA",
+    sugestaoCompraId: sugestao.id,
+    previsaoChegada,
+    adicionadoPorId: req.usuario.id,
+    adicionadoPorNome: req.usuario.nome,
+    em: new Date().toISOString(),
+  };
+  const dados = { pecasNecessarias: [...(manutencao.pecasNecessarias || []), item], prazo };
+  // Estava com alguém: volta para essa pessoa aceitar de novo com o dia novo
+  let volta = "";
+  if (manutencao.aceitaPorId && ["ACEITA", "AGUARDANDO"].includes(manutencao.status)) {
+    const pessoa = await Usuario.findByPk(manutencao.aceitaPorId, { attributes: ["id", "nome", "role"], transaction });
+    Object.assign(dados, {
+      status: "PENDENTE",
+      setor: pessoa?.role || manutencao.setor,
+      destinatarioId: manutencao.aceitaPorId,
+      destinatariosIds: [String(manutencao.aceitaPorId)],
+      aceitaPorId: null,
+      aceitaEm: null,
+      dataPrevista: null,
+      motivoAguardando: null,
+    });
+    volta = ` Voltou para ${pessoa?.nome || "quem estava com ela"} aceitar de novo com o dia que vai fazer.`;
+  }
+  return {
+    dados,
+    evento: eventoHistorico(
+      req.usuario,
+      "COMPRA_PECA",
+      dados.status || manutencao.status,
+      `Pediu compra de ${quantidade}× ${nomeItem} — chega ${dataBr(previsaoChegada)}; novo prazo ${dataBr(prazo)}.${volta}`,
+    ),
+  };
+});

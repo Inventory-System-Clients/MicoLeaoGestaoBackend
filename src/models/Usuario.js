@@ -65,6 +65,14 @@ const Usuario = sequelize.define(
       field: "jornada_diaria_minutos",
       comment: "Jornada do dia em minutos (ponto): passou disso, conta hora extra",
     },
+    // Chefe do setor (perfil): na manutenção mandada para o setor, escolhe
+    // quem faz (ou faz ele mesmo)
+    chefeSetor: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+      field: "chefe_setor",
+    },
   },
   {
     tableName: "usuarios",

@@ -118,7 +118,7 @@ export const obterUsuario = async (req, res) => {
 // Criar novo usuário (apenas ADMIN)
 export const criarUsuario = async (req, res) => {
   try {
-    const { nome, email, senha, telefone, role, lojasPermitidas } = req.body;
+    const { nome, email, senha, telefone, role, lojasPermitidas, chefeSetor } = req.body;
 
     if (!nome || !email || !senha) {
       return res
@@ -147,6 +147,7 @@ export const criarUsuario = async (req, res) => {
       senha,
       telefone,
       role,
+      chefeSetor: Boolean(chefeSetor),
     });
 
     const lojasParaPermitir = await obterLojasPermitidasPorRole(
@@ -188,7 +189,7 @@ export const atualizarUsuario = async (req, res) => {
       return res.status(404).json({ error: "Usuário não encontrado" });
     }
 
-    const { nome, email, senha, telefone, role, ativo, lojasPermitidas } =
+    const { nome, email, senha, telefone, role, ativo, lojasPermitidas, chefeSetor } =
       req.body;
 
     // Verificar se novo email já existe em outro usuário
@@ -214,6 +215,7 @@ export const atualizarUsuario = async (req, res) => {
       telefone: telefone ?? usuario.telefone,
       role: role ?? usuario.role,
       ativo: ativo ?? usuario.ativo,
+      chefeSetor: chefeSetor === undefined ? usuario.chefeSetor : Boolean(chefeSetor),
     });
 
     const roleFinal = role || usuario.role;

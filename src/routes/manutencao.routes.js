@@ -19,6 +19,13 @@ import {
   obterHistoricoMaquina,
   registrarPecaQuebradaManutencao,
   registrarUsoPecaManutencao,
+  editarManutencao,
+  adicionarOcorrenciaManutencao,
+  designarManutencao,
+  listarPecasDisponiveisManutencao,
+  adicionarPecaNecessariaManutencao,
+  removerPecaNecessariaManutencao,
+  pedirCompraPecaManutencao,
 } from "../controllers/manutencaoController.js";
 import {
   autenticar,
@@ -84,6 +91,17 @@ router.post(
   registrarLog("FINALIZAR_MANUTENCAO", "Manutencao"),
   finalizarManutencao,
 );
+// Editar (quem abriu, antes de aceitar; gestão) e juntar outra ocorrência
+router.put("/:id", registrarLog("EDITAR_MANUTENCAO", "Manutencao"), editarManutencao);
+router.post("/:id/ocorrencias", registrarLog("OCORRENCIA_MANUTENCAO", "Manutencao"), adicionarOcorrenciaManutencao);
+// Chefe do setor escolhe quem faz
+router.post("/:id/designar", registrarLog("DESIGNAR_MANUTENCAO", "Manutencao"), designarManutencao);
+// Peças necessárias (checa estoque) e pedido de compra da que falta
+router.get("/:id/pecas-disponiveis", listarPecasDisponiveisManutencao);
+router.post("/:id/pecas-necessarias", registrarLog("PECA_NECESSARIA_MANUTENCAO", "Manutencao"), adicionarPecaNecessariaManutencao);
+router.delete("/:id/pecas-necessarias/:itemId", registrarLog("REMOVER_PECA_NECESSARIA", "Manutencao"), removerPecaNecessariaManutencao);
+router.post("/:id/pedir-compra", registrarLog("PEDIR_COMPRA_PECA_MANUTENCAO", "Manutencao"), pedirCompraPecaManutencao);
+
 router.get("/:id/pecas", listarPecasUsadasManutencao);
 router.post(
   "/:id/pecas",

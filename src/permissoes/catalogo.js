@@ -916,13 +916,19 @@ export const CATALOGO = [
           "GET /api/manutencoes/maquina/:maquinaId",
           "GET /api/manutencoes/:id/pecas",
           "GET /api/manutencoes/:id/pecas-quebradas",
+          "GET /api/manutencoes/:id/pecas-disponiveis",
         ],
         telas: ["/manutencao"],
       },
       {
         chave: "manutencao.criar",
-        nome: "Solicitar manutenção (Cadastro/admin já mandam para um setor ou pessoa)",
-        rotas: ["POST /api/manutencoes", "GET /api/manutencoes/destinos"],
+        nome: "Solicitar manutenção, juntar ocorrência numa aberta e editar a sua (Cadastro/admin já mandam para um setor ou pessoa)",
+        rotas: [
+          "POST /api/manutencoes",
+          "GET /api/manutencoes/destinos",
+          "PUT /api/manutencoes/:id",
+          "POST /api/manutencoes/:id/ocorrencias",
+        ],
         requer: ["manutencao.ver"],
       },
       {
@@ -932,9 +938,10 @@ export const CATALOGO = [
       },
       {
         chave: "manutencao.mudarStatus",
-        nome: "Trabalhar na manutenção: aceitar, não consigo fazer, pedir serviço, concluir",
+        nome: "Trabalhar na manutenção: aceitar, não consigo fazer, pedir serviço, concluir (chefe do setor escolhe quem faz)",
         rotas: [
           "POST /api/manutencoes/:id/aceitar",
+          "POST /api/manutencoes/:id/designar",
           "POST /api/manutencoes/:id/aguardar",
           "POST /api/manutencoes/:id/servico",
           "POST /api/manutencoes/:id/concluir",
@@ -956,8 +963,13 @@ export const CATALOGO = [
       },
       {
         chave: "manutencao.registrarPeca",
-        nome: "Registrar peça usada na manutenção",
-        rotas: ["POST /api/manutencoes/:id/pecas"],
+        nome: "Peças da manutenção: registrar peça usada, adicionar peça necessária e pedir compra de peça",
+        rotas: [
+          "POST /api/manutencoes/:id/pecas",
+          "POST /api/manutencoes/:id/pecas-necessarias",
+          "DELETE /api/manutencoes/:id/pecas-necessarias/:itemId",
+          "POST /api/manutencoes/:id/pedir-compra",
+        ],
         requer: ["manutencao.ver"],
       },
       {

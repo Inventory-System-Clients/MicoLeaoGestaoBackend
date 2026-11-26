@@ -91,6 +91,27 @@ const Manutencao = sequelize.define(
       allowNull: false,
       defaultValue: [],
     },
+    // Outros problemas que aconteceram na mesma loja e foram juntados nesta:
+    // [{ id, descricao, maquinaId, maquinaCodigo, tipoProblema, usuarioId, usuarioNome, em }]
+    ocorrencias: {
+      type: DataTypes.JSONB,
+      allowNull: false,
+      defaultValue: [],
+    },
+    // Peças que a manutenção precisa (checadas no estoque ao adicionar) e as
+    // pedidas para compra: [{ id, pecaId, nome, codigo, unidade, quantidade,
+    // observacao, situacao: EM_ESTOQUE | COMPRA_SOLICITADA, sugestaoCompraId,
+    // previsaoChegada, adicionadoPorId, adicionadoPorNome, em }]
+    pecasNecessarias: {
+      type: DataTypes.JSONB,
+      allowNull: false,
+      defaultValue: [],
+    },
+    // Dia que quem aceitou vai fazer (informado ao aceitar)
+    dataPrevista: {
+      type: DataTypes.DATEONLY,
+      allowNull: true,
+    },
     aceitaPorId: {
       type: DataTypes.UUID,
       allowNull: true,

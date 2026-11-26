@@ -162,6 +162,15 @@ const startServer = async () => {
         });
         console.log("✅ Coluna jornada_diaria_minutos adicionada aos usuários!");
       }
+      // Chefe do setor (manutenção)
+      if (!colunasUsuarios.chefe_setor) {
+        await queryInterface.addColumn("usuarios", "chefe_setor", {
+          type: DataTypes.BOOLEAN,
+          allowNull: false,
+          defaultValue: false,
+        });
+        console.log("✅ Coluna chefe_setor adicionada aos usuários!");
+      }
 
       // Shopping: loja dentro do shopping e máquina avulsa (Loja tipo AVULSA).
       // (maquinas.shopping_id, criada na 1ª versão, ficou sem uso.)
@@ -175,6 +184,17 @@ const startServer = async () => {
       if (!colunasManutencoes.destinatariosIds) {
         await queryInterface.addColumn("manutencoes", "destinatariosIds", { type: DataTypes.JSONB, allowNull: false, defaultValue: [] });
         console.log("✅ Coluna destinatariosIds adicionada às manutenções!");
+      }
+      // Ocorrências juntadas, peças necessárias e dia previsto
+      for (const [coluna, definicao] of [
+        ["ocorrencias", { type: DataTypes.JSONB, allowNull: false, defaultValue: [] }],
+        ["pecasNecessarias", { type: DataTypes.JSONB, allowNull: false, defaultValue: [] }],
+        ["dataPrevista", { type: DataTypes.DATEONLY, allowNull: true }],
+      ]) {
+        if (!colunasManutencoes[coluna]) {
+          await queryInterface.addColumn("manutencoes", coluna, definicao);
+          console.log(`✅ Coluna ${coluna} adicionada às manutenções!`);
+        }
       }
 
       // Tarefas com várias pessoas: o responsável de cada tarefa antiga entra na lista

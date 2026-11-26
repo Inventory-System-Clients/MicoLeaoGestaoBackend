@@ -51,6 +51,7 @@ export const login = async (req, res) => {
         email: usuario.email,
         role: usuario.role,
         telefone: usuario.telefone,
+        chefeSetor: Boolean(usuario.chefeSetor),
         acessos: resumoDeAcessos(usuario),
       },
     });
