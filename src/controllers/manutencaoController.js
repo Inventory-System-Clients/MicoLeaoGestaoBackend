@@ -817,24 +817,65 @@ const comDestinatarios = async (manutencoes, usuario = null) => {
   ]);
   const porId = new Map(pessoas.map((p) => [String(p.id), p.toJSON()]));
   const sugestaoPorId = new Map(sugestoes.map((s) => [String(s.id), s.toJSON()]));
-  return lista.map((m) => ({
-    ...m,
-    destinatarios: (m.destinatariosIds || []).map((id) => porId.get(String(id))).filter(Boolean),
-    pecasNecessarias: (m.pecasNecessarias || []).map((p) => {
+
+  // Peça pedida para compra que já entrou no estoque (depósito + carrinho de
+  // quem vai fazer, descontando o já separado nesta manutenção) => "agora tem peça"
+  const abertasComPedido = lista.filter(
+    (m) => STATUS_EM_ANDAMENTO.includes(m.status) && (m.pecasNecessarias || []).some((p) => p.situacao === "COMPRA_SOLICITADA"),
+  );
+  const idsPecas = [
+    ...new Set(abertasComPedido.flatMap((m) => m.pecasNecessarias.filter((p) => p.situacao === "COMPRA_SOLICITADA" && p.pecaId).map((p) => String(p.pecaId)))),
+  ];
+  const executores = [...new Set(abertasComPedido.map((m) => m.aceitaPorId || m.destinatarioId).filter(Boolean).map(String))];
+  const [pecasEstoque, carrinhos] = idsPecas.length
+    ? await Promise.all([
+        Peca.findAll({ where: { id: idsPecas }, attributes: ["id", "quantidadeEstoque"] }),
+        executores.length
+          ? EstoquePecaFuncionario.findAll({ where: { pecaId: idsPecas, funcionarioId: executores }, attributes: ["pecaId", "funcionarioId", "quantidade"] })
+          : [],
+      ])
+    : [[], []];
+  const central = new Map(pecasEstoque.map((p) => [String(p.id), Number(p.quantidadeEstoque) || 0]));
+  const noCarrinho = new Map(carrinhos.map((c) => [`${c.funcionarioId}:${c.pecaId}`, Number(c.quantidade) || 0]));
+  const temAgora = (m, item) => {
+    if (item.situacao !== "COMPRA_SOLICITADA" || !STATUS_EM_ANDAMENTO.includes(m.status)) return false;
+    const compra = item.sugestaoCompraId ? sugestaoPorId.get(String(item.sugestaoCompraId)) : null;
+    if (compra?.compraGerada?.status === "RECEBIDO") return true;
+    if (!item.pecaId) return false;
+    const executor = m.aceitaPorId || m.destinatarioId;
+    const separada = (m.pecasNecessarias || [])
+      .filter((i) => i.situacao === "EM_ESTOQUE" && String(i.pecaId) === String(item.pecaId))
+      .reduce((soma, i) => soma + Number(i.quantidade || 0), 0);
+    const disponivel =
+      (central.get(String(item.pecaId)) || 0) + (executor ? noCarrinho.get(`${executor}:${item.pecaId}`) || 0 : 0) - separada;
+    return disponivel >= Number(item.quantidade || 0);
+  };
+
+  return lista.map((m) => {
+    const pecasNecessarias = (m.pecasNecessarias || []).map((p) => {
       const sugestao = p.sugestaoCompraId ? sugestaoPorId.get(String(p.sugestaoCompraId)) : null;
+      const item = { ...p, temAgora: temAgora(m, p) };
       return sugestao
         ? {
-            ...p,
+            ...item,
             compra: {
               sugestaoStatus: sugestao.status,
               resposta: sugestao.resposta,
               compraStatus: sugestao.compraGerada?.status || null,
             },
           }
-        : p;
-    }),
-    acoes: usuario ? acoesDaManutencao(m, usuario, lojas) : undefined,
-  }));
+        : item;
+    });
+    const pedidas = STATUS_EM_ANDAMENTO.includes(m.status) ? pecasNecessarias.filter((p) => p.situacao === "COMPRA_SOLICITADA") : [];
+    return {
+      ...m,
+      destinatarios: (m.destinatariosIds || []).map((id) => porId.get(String(id))).filter(Boolean),
+      pecasNecessarias,
+      // ESPERANDO_PECA: falta peça pedida; TEM_PECA: todas as pedidas já têm no estoque
+      situacaoPecas: pedidas.length ? (pedidas.every((p) => p.temAgora) ? "TEM_PECA" : "ESPERANDO_PECA") : null,
+      acoes: usuario ? acoesDaManutencao(m, usuario, lojas) : undefined,
+    };
+  });
 };
 
 const responderComManutencao = async (res, id, usuario = null) => {
