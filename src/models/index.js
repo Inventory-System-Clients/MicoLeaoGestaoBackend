@@ -102,6 +102,7 @@ Maquina.belongsTo(Loja, { foreignKey: "lojaId", as: "loja" });
 // Shopping -> lojas e máquinas avulsas (Loja com tipo AVULSA)
 Shopping.hasMany(Loja, { foreignKey: "shoppingId", as: "lojas" });
 Loja.belongsTo(Shopping, { foreignKey: "shoppingId", as: "shopping" });
+ProjetoLoja.belongsTo(Shopping, { foreignKey: "shoppingId", as: "shopping" });
 // Documentos em PDF (contrato da loja, documentos do projeto)
 Documento.belongsTo(Usuario, { foreignKey: "enviadoPorId", as: "enviadoPor" });
 

@@ -32,6 +32,13 @@ const ProjetoLoja = sequelize.define(
       type: DataTypes.DATEONLY,
       allowNull: true,
     },
+    // Shopping do projeto (opcional). Na loja nova do projeto, a loja já
+    // nasce dentro dele.
+    shoppingId: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      field: "shopping_id",
+    },
     observacoes: {
       type: DataTypes.TEXT,
       allowNull: true,

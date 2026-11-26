@@ -13,6 +13,7 @@ import {
   GastoFixoLoja,
   GastoTotalFixoLoja,
   ExtintorLoja,
+  Shopping,
 } from "../models/index.js";
 import { ehLojaDeProjetoEmImplantacao } from "../utils/lojaProjeto.js";
 import {
@@ -26,8 +27,9 @@ const includeProjeto = [
   {
     model: Loja,
     as: "loja",
-    attributes: ["id", "nome", "statusOperacao", "ativo"],
+    attributes: ["id", "nome", "statusOperacao", "ativo", "shoppingId"],
   },
+  { model: Shopping, as: "shopping", attributes: ["id", "nome"] },
   { model: Usuario, as: "criadoPor", attributes: ["id", "nome"] },
   {
     model: ProjetoLojaMaquina,
@@ -315,6 +317,7 @@ const projetoLojaController = {
         maquinas,
         custos,
         midias,
+        shoppingId,
       } = req.body;
 
       if (!nome || !String(nome).trim()) {
@@ -343,6 +346,7 @@ const projetoLojaController = {
           status: status || "PLANEJAMENTO",
           dataPrevisaoAbertura: dataPrevisaoAbertura || null,
           observacoes: observacoes || null,
+          shoppingId: shoppingId || null,
           criadoPorId: req.usuario.id,
         },
         { transaction },
@@ -399,6 +403,7 @@ const projetoLojaController = {
         maquinas,
         custos,
         midias,
+        shoppingId,
       } = req.body;
 
       if (!nome || !String(nome).trim()) {
@@ -460,6 +465,8 @@ const projetoLojaController = {
           status: jaConcluido ? projeto.status : status || projeto.status,
           dataPrevisaoAbertura: dataPrevisaoAbertura || null,
           observacoes: observacoes || null,
+          // "" tira o shopping; sem mandar, mantém
+          shoppingId: shoppingId !== undefined ? shoppingId || null : projeto.shoppingId,
         },
         { transaction },
       );
