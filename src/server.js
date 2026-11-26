@@ -172,6 +172,31 @@ const startServer = async () => {
         console.log("✅ Coluna chefe_setor adicionada aos usuários!");
       }
 
+      // Rotas: período previsto, períodos das pessoas, carro devolvido antes de
+      // finalizar e horários de chegada/saída em cada parada
+      const colunasRoteiros = await queryInterface.describeTable("roteiros");
+      for (const [coluna, definicao] of [
+        ["previsao_fim", { type: DataTypes.DATE, allowNull: true }],
+        ["periodos", { type: DataTypes.JSONB, allowNull: false, defaultValue: [] }],
+        ["veiculo_devolvido_em", { type: DataTypes.DATE, allowNull: true }],
+      ]) {
+        if (!colunasRoteiros[coluna]) {
+          await queryInterface.addColumn("roteiros", coluna, definicao);
+          console.log(`✅ Coluna ${coluna} adicionada às rotas!`);
+        }
+      }
+      const colunasRoteiroItens = await queryInterface.describeTable("roteiro_itens");
+      for (const [coluna, definicao] of [
+        ["chegada_em", { type: DataTypes.DATE, allowNull: true }],
+        ["chegada_origem", { type: DataTypes.STRING(20), allowNull: true }],
+        ["saida_em", { type: DataTypes.DATE, allowNull: true }],
+      ]) {
+        if (!colunasRoteiroItens[coluna]) {
+          await queryInterface.addColumn("roteiro_itens", coluna, definicao);
+          console.log(`✅ Coluna ${coluna} adicionada às paradas das rotas!`);
+        }
+      }
+
       // Shopping: loja dentro do shopping e máquina avulsa (Loja tipo AVULSA).
       // (maquinas.shopping_id, criada na 1ª versão, ficou sem uso.)
       const colunasLojasShopping = await queryInterface.describeTable("lojas");

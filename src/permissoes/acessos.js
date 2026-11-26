@@ -19,22 +19,29 @@ const MANUTENCAO_BASICA = [
   "manutencao.registrarPecaQuebrada",
 ];
 
+// Rotas: vê e faz as dele, e cria/edita as próprias (precisa estar na rota)
+const ROTAS_PROPRIAS = ["roteiros.ver", "roteiros.executar", "roteiros.criar", "roteiros.editar", "roteiros.editarItens"];
+
 // Todo mundo vê e trabalha nas próprias tarefas (Análise > Tarefas)
 const TAREFAS = ["tarefas.minhas"];
+
+// Todo mundo vê o estoque das lojas do seu cadastro (só consulta)
+const ESTOQUE_MINHAS_LOJAS = ["estoque.minhasLojas"];
 
 // A movimentação em passos (Operacional > Movimentação, "visitas.registrar")
 // é de todos os perfis, menos Motorista e Financeiro; nas lojas marcadas no
 // cadastro ou em todas (lojas.todas)
 export const PADRAO_PERFIS_RESTRITOS = {
   // Rotas: vê as que está e as que passam pelas lojas dela; faz as que está
-  CONSULTOR_VENDAS: ["ponto.bater", "metas.minhas", "visitas.registrar", "roteiros.ver", "roteiros.executar", ...MANUTENCAO_BASICA, ...TAREFAS],
+  // Também cria as próprias rotas (precisa estar nela)
+  CONSULTOR_VENDAS: ["ponto.bater", "metas.minhas", "visitas.registrar", ...ROTAS_PROPRIAS, ...MANUTENCAO_BASICA, ...TAREFAS, ...ESTOQUE_MINHAS_LOJAS],
   // Faz as rotas dele: inicia, entrega nas paradas e finaliza devolvendo o veículo
-  MOTORISTA: ["ponto.bater", "metas.minhas", "roteiros.ver", "roteiros.executar", ...MANUTENCAO_BASICA, ...TAREFAS],
+  MOTORISTA: ["ponto.bater", "metas.minhas", ...ROTAS_PROPRIAS, ...MANUTENCAO_BASICA, ...TAREFAS, ...ESTOQUE_MINHAS_LOJAS],
   // Mesmo trabalho do Consultor (ponto + movimentação nas lojas dele), sem metas
   // Rotas: vê as que está e as que passam pelas lojas dele; faz as que está
-  ABASTECEDOR: ["ponto.bater", "visitas.registrar", "roteiros.ver", "roteiros.executar", ...MANUTENCAO_BASICA, ...TAREFAS],
+  ABASTECEDOR: ["ponto.bater", "visitas.registrar", ...ROTAS_PROPRIAS, ...MANUTENCAO_BASICA, ...TAREFAS, ...ESTOQUE_MINHAS_LOJAS],
   // Começa só com as metas por loja; os outros acessos vêm depois
-  FINANCEIRO: ["ponto.bater", "metas.minhas", "metas.gerenciar", ...MANUTENCAO_BASICA, ...TAREFAS],
+  FINANCEIRO: ["ponto.bater", "metas.minhas", "metas.gerenciar", ...MANUTENCAO_BASICA, ...TAREFAS, ...ESTOQUE_MINHAS_LOJAS],
   // Cria e acompanha as rotas, vê os envios e acompanha as metas por loja.
   // Trabalha em todas as lojas (movimentação e lacre)
   GERENTE_VENDAS: [
@@ -42,7 +49,7 @@ export const PADRAO_PERFIS_RESTRITOS = {
     "visitas.registrar",
     "lojas.todas",
     ...MANUTENCAO_BASICA,
-    ...TAREFAS,
+    ...TAREFAS, ...ESTOQUE_MINHAS_LOJAS,
     "roteiros.ver",
     "roteiros.verTodos",
     "roteiros.executar", // quando está na rota: inicia, entrega e finaliza

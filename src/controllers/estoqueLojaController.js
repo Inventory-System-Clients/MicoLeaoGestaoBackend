@@ -1,4 +1,55 @@
-import { EstoqueLoja, Loja, Produto } from "../models/index.js";
+import { EstoqueLoja, Loja, Produto, UsuarioLoja } from "../models/index.js";
+import { temAcao } from "../permissoes/acessos.js";
+
+// Estoque das lojas do usuário (as do cadastro dele; todas com lojas.todas),
+// só para consultar. Loja que usa o estoque de outra mostra o estoque dela.
+export const listarEstoqueMinhasLojas = async (req, res) => {
+  try {
+    const todas = temAcao(req.usuario, "lojas.todas");
+    const ids = todas
+      ? null
+      : (await UsuarioLoja.findAll({ where: { usuarioId: req.usuario.id }, attributes: ["lojaId"] })).map((v) => v.lojaId);
+    if (ids && !ids.length) return res.json([]);
+    const lojas = await Loja.findAll({
+      where: { ativo: true, ...(ids ? { id: ids } : {}) },
+      attributes: ["id", "nome", "cidade", "tipo", "estoqueLojaId"],
+      order: [["nome", "ASC"]],
+    });
+    const idsDosEstoques = [...new Set(lojas.map((l) => l.estoqueLojaId || l.id))];
+    const [estoques, donas] = await Promise.all([
+      EstoqueLoja.findAll({
+        where: { lojaId: idsDosEstoques },
+        attributes: ["lojaId", "produtoId", "quantidade", "estoqueMinimo"],
+        include: [{ model: Produto, as: "produto", attributes: ["id", "nome", "codigo", "emoji", "estoqueMinimo"] }],
+      }),
+      Loja.findAll({ where: { id: idsDosEstoques }, attributes: ["id", "nome"] }),
+    ]);
+    const nomeDona = new Map(donas.map((l) => [String(l.id), l.nome]));
+    res.json(
+      lojas.map((loja) => {
+        const dona = loja.estoqueLojaId || loja.id;
+        return {
+          loja: { id: loja.id, nome: loja.nome, cidade: loja.cidade, tipo: loja.tipo },
+          estoqueDe: loja.estoqueLojaId ? { id: dona, nome: nomeDona.get(String(dona)) || "outra loja" } : null,
+          itens: estoques
+            .filter((e) => String(e.lojaId) === String(dona))
+            .map((e) => ({
+              produtoId: e.produtoId,
+              nome: e.produto?.nome || "Produto",
+              codigo: e.produto?.codigo || null,
+              emoji: e.produto?.emoji || null,
+              quantidade: Number(e.quantidade) || 0,
+              estoqueMinimo: Number(e.estoqueMinimo ?? e.produto?.estoqueMinimo ?? 0) || 0,
+            }))
+            .sort((a, b) => a.nome.localeCompare(b.nome)),
+        };
+      }),
+    );
+  } catch (error) {
+    console.error("Erro ao listar o estoque das minhas lojas:", error);
+    res.status(500).json({ error: "Erro ao carregar o estoque das suas lojas" });
+  }
+};
 import { registrarAuditoriaEstoque } from "../utils/auditoriaEstoque.js";
 
 // Listar estoque de uma loja

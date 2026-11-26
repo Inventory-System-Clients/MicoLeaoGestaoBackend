@@ -10,6 +10,7 @@ import {
 import { lojaDoEstoque } from "../utils/estoqueCompartilhado.js";
 import { temAcao } from "../permissoes/acessos.js";
 import { registrarMovimentacao } from "./movimentacaoController.js";
+import { marcarChegadaPelaMovimentacao } from "./roteiroController.js";
 import { analisarFotoPelucias } from "./assistenteIaController.js";
 
 // Fotos da movimentação vêm do Cloudinary (upload direto do navegador)
@@ -197,6 +198,16 @@ const visitaController = {
                 mensagem: String(checklist.analiseFotoFinal.mensagem || "").slice(0, 300),
               }
             : null,
+      };
+      // Rota em andamento passando por essa loja: movimentação salva = chegou nela
+      const responder = res.json.bind(res);
+      res.json = (corpo) => {
+        if (res.statusCode < 400) {
+          marcarChegadaPelaMovimentacao(req.usuario.id, maquina.lojaId).catch((erro) =>
+            console.error("Erro ao marcar chegada na rota:", erro.message),
+          );
+        }
+        return responder(corpo);
       };
       return registrarMovimentacao(req, res, next);
     } catch (error) {

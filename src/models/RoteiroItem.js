@@ -51,6 +51,23 @@ const RoteiroItem = sequelize.define(
       allowNull: true,
       field: "concluido_em",
     },
+    // Horários na parada: chegou (botão ou movimentação na loja) e saiu
+    chegadaEm: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      field: "chegada_em",
+    },
+    // BOTAO | MOVIMENTACAO | ENTREGA
+    chegadaOrigem: {
+      type: DataTypes.STRING(20),
+      allowNull: true,
+      field: "chegada_origem",
+    },
+    saidaEm: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      field: "saida_em",
+    },
     maquinasConcluidas: {
       type: DataTypes.JSON,
       allowNull: false,

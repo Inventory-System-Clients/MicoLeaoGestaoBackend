@@ -16,6 +16,7 @@ import {
   Veiculo,
 } from "../models/index.js";
 import { temAcao } from "../permissoes/acessos.js";
+import { randomUUID } from "node:crypto";
 
 const includeRoteiro = [
   {
@@ -88,6 +89,12 @@ const ehPessoaDaRota = async (usuarioId, roteiro) =>
 
 const usuarioPodeAcessar = async (req, roteiro) =>
   temAcao(req.usuario, "roteiros.verTodos") || (await ehPessoaDaRota(req.usuario.id, roteiro));
+
+// Editar a rota: gestão (vê todas), quem criou ou quem está nela
+const podeEditarRota = async (usuario, roteiro) =>
+  temAcao(usuario, "roteiros.verTodos") ||
+  String(roteiro.criadoPorId) === String(usuario.id) ||
+  (await ehPessoaDaRota(usuario.id, roteiro));
 
 // Perfis que podem ser atribuídos a uma rota
 const PERFIS_DA_ROTA = ["MOTORISTA", "CONSULTOR_VENDAS", "GERENTE_VENDAS", "ABASTECEDOR"];
@@ -262,6 +269,11 @@ const dadosDaRota = async (body, rotaAtual = null) => {
   if (!nome) return { erro: "Dê um nome para a rota." };
   if (!pessoasIds.length) return { erro: "Escolha quem vai fazer a rota." };
   if (!dataInicio || Number.isNaN(new Date(dataInicio).getTime())) return { erro: "Informe a data e a hora de início." };
+  const previsaoFim =
+    body.previsaoFim !== undefined ? (body.previsaoFim ? new Date(body.previsaoFim) : null) : rotaAtual?.previsaoFim ?? null;
+  if (previsaoFim && (Number.isNaN(previsaoFim.getTime()) || previsaoFim <= new Date(dataInicio))) {
+    return { erro: "O fim previsto tem que ser depois do início." };
+  }
   const pessoas = await Usuario.findAll({ where: { id: pessoasIds }, attributes: ["id", "nome", "role", "ativo"] });
   if (pessoas.length !== pessoasIds.length || pessoas.some((p) => !p.ativo || !PERFIS_DA_ROTA.includes(p.role))) {
     return { erro: "Escolha pessoas ativas (motorista, consultora, gestora ou abastecedor)." };
@@ -279,7 +291,7 @@ const dadosDaRota = async (body, rotaAtual = null) => {
     });
     if (conflito) return { erro: conflito };
   }
-  return { dados: { nome, usuarioId: pessoasIds[0], veiculoId, dataInicio }, pessoasIds };
+  return { dados: { nome, usuarioId: pessoasIds[0], veiculoId, dataInicio, previsaoFim }, pessoasIds };
 };
 
 // Lojas, motoristas, veículos e envios sem rota, para montar a rota
@@ -333,7 +345,80 @@ export const iniciarRotaManual = async (req, res) => {
   }
 };
 
-// Motorista finaliza: data fim automática, devolve o veículo (KM final)
+// Devolve o veículo da rota (KM final). Devolve { erro, status } ou os dados
+// a gravar na rota.
+const devolverVeiculo = async (rota, req, agora, motivo, transaction) => {
+  const veiculo = await Veiculo.findByPk(rota.veiculoId, { transaction, lock: transaction.LOCK.UPDATE });
+  if (!veiculo) return { dados: { veiculoDevolvidoEm: agora } };
+  const km = Math.floor(Number(req.body?.km));
+  if (!Number.isFinite(km)) return { status: 400, erro: "Informe a quilometragem final do veículo." };
+  if (km < Number(veiculo.km)) return { status: 400, erro: `A quilometragem não pode ser menor que ${veiculo.km}.` };
+  await veiculo.update(
+    {
+      emUso: false,
+      km,
+      ...(req.body?.combustivel ? { nivelCombustivel: req.body.combustivel } : {}),
+    },
+    { transaction },
+  );
+  await MovimentacaoVeiculo.create(
+    {
+      veiculoId: veiculo.id,
+      usuarioId: req.usuario.id,
+      tipo: "devolucao",
+      dataHora: agora,
+      gasolina: req.body?.combustivel || veiculo.nivelCombustivel,
+      nivel_limpeza: veiculo.nivelLimpeza,
+      estado: veiculo.estado,
+      modo: veiculo.modo,
+      km,
+      obs: `${motivo} "${rota.nome}"${req.body?.observacao ? ` — ${String(req.body.observacao).slice(0, 200)}` : ""}`,
+    },
+    { transaction },
+  );
+  return { dados: { kmFinal: km, veiculoDevolvidoEm: agora } };
+};
+
+// Parada em que a pessoa está (chegou e não saiu): sai agora
+const fecharParadaAberta = (roteiroId, agora, transaction, excetoId = null) =>
+  RoteiroItem.update(
+    { saidaEm: agora },
+    {
+      where: {
+        roteiroId,
+        chegadaEm: { [Op.ne]: null },
+        saidaEm: null,
+        ...(excetoId ? { id: { [Op.ne]: excetoId } } : {}),
+      },
+      transaction,
+    },
+  );
+
+// Devolver o carro antes de finalizar: a rota continua em andamento (pendente)
+export const devolverVeiculoRota = async (req, res) => {
+  try {
+    const resultado = await sequelize.transaction(async (transaction) => {
+      const rota = await Roteiro.findByPk(req.params.id, { transaction, lock: transaction.LOCK.UPDATE });
+      if (!rota) return { status: 404, erro: "Rota não encontrada" };
+      if (!(await usuarioPodeAcessar(req, rota))) return { status: 403, erro: "Essa rota não é sua." };
+      if (rota.status !== "EM_ANDAMENTO") return { status: 409, erro: "Só dá para devolver o carro de uma rota em andamento." };
+      if (!rota.veiculoId) return { status: 400, erro: "Essa rota não tem veículo." };
+      if (rota.veiculoDevolvidoEm) return { status: 409, erro: "O carro já foi devolvido." };
+      const devolucao = await devolverVeiculo(rota, req, new Date(), "Carro devolvido (rota ainda em andamento)", transaction);
+      if (devolucao.erro) return devolucao;
+      await rota.update(devolucao.dados, { transaction });
+      return { id: rota.id };
+    });
+    if (resultado.erro) return res.status(resultado.status).json({ error: resultado.erro });
+    res.json(await obterRoteiroCompleto(resultado.id));
+  } catch (error) {
+    console.error("Erro ao devolver o carro da rota:", error);
+    res.status(500).json({ error: "Erro ao devolver o carro" });
+  }
+};
+
+// Finaliza: data fim automática; devolve o veículo (KM final) se ainda não
+// foi devolvido; a parada em que a pessoa estava fecha (saída agora)
 export const finalizarRota = async (req, res) => {
   try {
     const resultado = await sequelize.transaction(async (transaction) => {
@@ -343,38 +428,16 @@ export const finalizarRota = async (req, res) => {
       if (rota.status === "FINALIZADA") return { status: 409, erro: "Essa rota já foi finalizada." };
       const agora = new Date();
       const dados = { status: "FINALIZADA", dataFim: agora, iniciadaEm: rota.iniciadaEm || agora };
-      if (rota.veiculoId) {
-        const veiculo = await Veiculo.findByPk(rota.veiculoId, { transaction, lock: transaction.LOCK.UPDATE });
-        if (veiculo) {
-          const km = Math.floor(Number(req.body?.km));
-          if (!Number.isFinite(km)) return { status: 400, erro: "Informe a quilometragem final do veículo." };
-          if (km < Number(veiculo.km)) return { status: 400, erro: `A quilometragem não pode ser menor que ${veiculo.km}.` };
-          dados.kmFinal = km;
-          await veiculo.update(
-            {
-              emUso: false,
-              km,
-              ...(req.body?.combustivel ? { nivelCombustivel: req.body.combustivel } : {}),
-            },
-            { transaction },
-          );
-          await MovimentacaoVeiculo.create(
-            {
-              veiculoId: veiculo.id,
-              usuarioId: req.usuario.id,
-              tipo: "devolucao",
-              dataHora: agora,
-              gasolina: req.body?.combustivel || veiculo.nivelCombustivel,
-              nivel_limpeza: veiculo.nivelLimpeza,
-              estado: veiculo.estado,
-              modo: veiculo.modo,
-              km,
-              obs: `Fim da rota "${rota.nome}"${req.body?.observacao ? ` — ${String(req.body.observacao).slice(0, 200)}` : ""}`,
-            },
-            { transaction },
-          );
-        }
+      if (rota.veiculoId && !rota.veiculoDevolvidoEm && rota.status === "EM_ANDAMENTO") {
+        const devolucao = await devolverVeiculo(rota, req, agora, "Fim da rota", transaction);
+        if (devolucao.erro) return devolucao;
+        Object.assign(dados, devolucao.dados);
+      } else if (rota.veiculoId && !rota.veiculoDevolvidoEm) {
+        // Agendada que nunca começou: o carro nem saiu
+        const veiculo = await Veiculo.findByPk(rota.veiculoId, { transaction });
+        if (veiculo?.emUso && rota.iniciadaEm) await veiculo.update({ emUso: false }, { transaction });
       }
+      await fecharParadaAberta(rota.id, agora, transaction);
       await rota.update(dados, { transaction });
       return { id: rota.id };
     });
@@ -392,6 +455,9 @@ export const listarRoteiros = async (req, res) => {
 
     // Gestão vê todas. Os outros veem as rotas em que estão (fazem) e as que
     // passam pelas lojas deles (só acompanham). Finalizadas: últimos 7 dias.
+    // ?historico=1: as finalizadas (200 mais recentes), com chegada e saída
+    // de cada loja
+    const historico = req.query.historico === "1" || req.query.historico === "true";
     const verTodos = temAcao(req.usuario, "roteiros.verTodos");
     let minhasIds = [];
     let daLojaIds = [];
@@ -408,32 +474,41 @@ export const listarRoteiros = async (req, res) => {
         daLojaIds = [...paradas, ...enviosParaLojas].map((p) => p.roteiroId);
       }
     }
-    const where = verTodos
+    const visiveis = verTodos
       ? {}
       : {
-          [Op.and]: [
-            {
-              [Op.or]: [
-                { usuarioId: req.usuario.id },
-                { id: [...new Set([...minhasIds, ...daLojaIds])] },
-              ],
-            },
+          [Op.or]: [
+            { usuarioId: req.usuario.id },
+            { criadoPorId: req.usuario.id },
+            { id: [...new Set([...minhasIds, ...daLojaIds])] },
           ],
           ativo: true,
-          [Op.or]: [
-            { status: { [Op.ne]: "FINALIZADA" } },
-            { dataFim: { [Op.gte]: new Date(Date.now() - 7 * 24 * 3600e3) } },
-          ],
         };
+    const where = historico
+      ? { [Op.and]: [visiveis, { status: "FINALIZADA" }] }
+      : verTodos
+        ? {}
+        : {
+            [Op.and]: [
+              visiveis,
+              {
+                [Op.or]: [
+                  { status: { [Op.ne]: "FINALIZADA" } },
+                  { dataFim: { [Op.gte]: new Date(Date.now() - 7 * 24 * 3600e3) } },
+                ],
+              },
+            ],
+          };
 
-    const roteiros = await Roteiro.findAll({
+    let roteiros = await Roteiro.findAll({
       where,
       include: includeRoteiro,
       order: [
-        ["createdAt", "DESC"],
+        historico ? ["dataFim", "DESC NULLS LAST"] : ["createdAt", "DESC"],
         [{ model: RoteiroItem, as: "itens" }, "ordem", "ASC"],
       ],
     });
+    if (historico) roteiros = roteiros.slice(0, 200);
 
     const minhas = new Set(minhasIds.map(String));
     res.json(
@@ -442,6 +517,12 @@ export const listarRoteiros = async (req, res) => {
         // pode iniciar/conferir/finalizar (senão só acompanha)
         souDaRota:
           verTodos ||
+          String(roteiro.usuarioId) === String(req.usuario.id) ||
+          minhas.has(String(roteiro.id)),
+        // editar: gestão, quem criou ou quem está na rota
+        podeEditar:
+          verTodos ||
+          String(roteiro.criadoPorId) === String(req.usuario.id) ||
           String(roteiro.usuarioId) === String(req.usuario.id) ||
           minhas.has(String(roteiro.id)),
       })),
@@ -484,6 +565,9 @@ export const criarRoteiro = async (req, res) => {
   try {
     const { dados, erro, pessoasIds } = await dadosDaRota(req.body);
     if (erro) return res.status(400).json({ error: erro });
+    if (!temAcao(req.usuario, "roteiros.verTodos") && !pessoasIds.includes(String(req.usuario.id))) {
+      return res.status(400).json({ error: "Você precisa estar entre as pessoas da rota que criar." });
+    }
     const roteiro = await Roteiro.create({
       ...dados,
       status: "AGENDADA",
@@ -512,11 +596,12 @@ export const atualizarRoteiro = async (req, res) => {
     const roteiro = await Roteiro.findByPk(req.params.id);
     if (!roteiro) return res.status(404).json({ error: "Rota não encontrada" });
     if (roteiro.status === "FINALIZADA") return res.status(400).json({ error: "Rota finalizada não pode ser editada." });
+    if (!(await podeEditarRota(req.usuario, roteiro))) return res.status(403).json({ error: "Você só edita as rotas que criou ou em que está." });
     const { dados, erro, pessoasIds } = await dadosDaRota(req.body, roteiro);
     if (erro) return res.status(400).json({ error: erro });
     if (roteiro.status === "EM_ANDAMENTO") {
-      // Em andamento: nome e pessoas (a principal, o veículo e o início já valeram)
-      await roteiro.update({ nome: dados.nome });
+      // Em andamento: nome, fim previsto e pessoas (a principal, o veículo e o início já valeram)
+      await roteiro.update({ nome: dados.nome, previsaoFim: dados.previsaoFim });
       const comPrincipal = pessoasIds.includes(String(roteiro.usuarioId))
         ? pessoasIds
         : [String(roteiro.usuarioId), ...pessoasIds];
@@ -643,10 +728,14 @@ export const concluirItemRoteiro = async (req, res) => {
     }
 
     const concluido = req.body.concluido !== false;
+    const agora = new Date();
+    // Feito sem ter marcado "cheguei": conta a chegada agora
+    if (concluido && !item.chegadaEm) await fecharParadaAberta(item.roteiroId, agora, null, item.id);
     await item.update({
       concluido,
-      concluidoEm: concluido ? new Date() : null,
+      concluidoEm: concluido ? agora : null,
       maquinasConcluidas: concluido ? item.maquinasConcluidas : [],
+      ...(concluido && !item.chegadaEm ? { chegadaEm: agora, chegadaOrigem: "ENTREGA" } : {}),
     });
 
     res.json(await obterRoteiroCompleto(item.roteiroId));
@@ -723,5 +812,137 @@ export const concluirMaquinaRoteiro = async (req, res) => {
   } catch (error) {
     console.error("Erro ao concluir máquina do roteiro:", error);
     res.status(500).json({ error: "Erro ao concluir máquina do roteiro" });
+  }
+};
+
+// ---------- Cheguei / saí da loja e períodos ----------
+
+// Parada da rota em andamento de quem está nela
+const carregarParadaDaPessoa = async (req) => {
+  const item = await RoteiroItem.findByPk(req.params.id);
+  if (!item) return { status: 404, erro: "Parada não encontrada" };
+  const rota = await Roteiro.findByPk(item.roteiroId);
+  if (!rota || !(await usuarioPodeAcessar(req, rota))) return { status: 403, erro: "Essa rota não é sua." };
+  if (rota.status !== "EM_ANDAMENTO") return { status: 409, erro: "A rota precisa estar em andamento." };
+  if (item.tipo !== "LOJA") return { status: 400, erro: "Essa parada não é uma loja." };
+  return { item, rota };
+};
+
+// Cheguei na loja (desfazer: { desfazer: true }). Chegar numa loja = saiu da anterior
+export const marcarChegadaParada = async (req, res) => {
+  try {
+    const { item, rota, erro, status } = await carregarParadaDaPessoa(req);
+    if (erro) return res.status(status).json({ error: erro });
+    if (req.body?.desfazer) {
+      await item.update({ chegadaEm: null, chegadaOrigem: null, saidaEm: null });
+    } else {
+      if (item.chegadaEm) return res.status(409).json({ error: "A chegada nessa loja já foi marcada." });
+      const agora = new Date();
+      await fecharParadaAberta(rota.id, agora, null, item.id);
+      await item.update({ chegadaEm: agora, chegadaOrigem: "BOTAO", saidaEm: null });
+    }
+    res.json(await obterRoteiroCompleto(rota.id));
+  } catch (error) {
+    console.error("Erro ao marcar chegada:", error);
+    res.status(500).json({ error: "Erro ao marcar a chegada" });
+  }
+};
+
+// Saí da loja (desfazer: { desfazer: true })
+export const marcarSaidaParada = async (req, res) => {
+  try {
+    const { item, rota, erro, status } = await carregarParadaDaPessoa(req);
+    if (erro) return res.status(status).json({ error: erro });
+    if (req.body?.desfazer) {
+      await item.update({ saidaEm: null });
+    } else {
+      if (item.saidaEm) return res.status(409).json({ error: "A saída dessa loja já foi marcada." });
+      const agora = new Date();
+      // Saiu sem marcar a chegada: conta as duas agora
+      await item.update({
+        saidaEm: agora,
+        ...(item.chegadaEm ? {} : { chegadaEm: agora, chegadaOrigem: "BOTAO" }),
+      });
+    }
+    res.json(await obterRoteiroCompleto(rota.id));
+  } catch (error) {
+    console.error("Erro ao marcar saída:", error);
+    res.status(500).json({ error: "Erro ao marcar a saída" });
+  }
+};
+
+// Movimentação numa loja = chegou nela (nas rotas em andamento de quem fez,
+// que passam por essa loja e ainda não tinham a chegada). Sai da anterior.
+export const marcarChegadaPelaMovimentacao = async (usuarioId, lojaId) => {
+  if (!usuarioId || !lojaId) return;
+  const vinculos = await RoteiroUsuario.findAll({ where: { usuarioId }, attributes: ["roteiroId"] });
+  const rotas = await Roteiro.findAll({
+    where: {
+      status: "EM_ANDAMENTO",
+      [Op.or]: [{ usuarioId }, { id: vinculos.map((v) => v.roteiroId) }],
+    },
+    attributes: ["id"],
+  });
+  if (!rotas.length) return;
+  const paradas = await RoteiroItem.findAll({
+    where: { roteiroId: rotas.map((r) => r.id), tipo: "LOJA", lojaId, chegadaEm: null },
+    order: [["ordem", "ASC"]],
+  });
+  const agora = new Date();
+  const feitas = new Set();
+  for (const parada of paradas) {
+    if (feitas.has(parada.roteiroId)) continue; // a mesma loja duas vezes: a 1ª
+    feitas.add(parada.roteiroId);
+    await fecharParadaAberta(parada.roteiroId, agora, null, parada.id);
+    await parada.update({ chegadaEm: agora, chegadaOrigem: "MOVIMENTACAO" });
+  }
+};
+
+// Períodos que a pessoa vai fazer a rota: { inicio, fim, observacao }
+export const adicionarPeriodoRota = async (req, res) => {
+  try {
+    const rota = await Roteiro.findByPk(req.params.id);
+    if (!rota) return res.status(404).json({ error: "Rota não encontrada" });
+    if (!(await usuarioPodeAcessar(req, rota))) return res.status(403).json({ error: "Essa rota não é sua." });
+    if (rota.status === "FINALIZADA") return res.status(409).json({ error: "Essa rota já foi finalizada." });
+    const inicio = new Date(req.body?.inicio);
+    const fim = new Date(req.body?.fim);
+    if (Number.isNaN(inicio.getTime()) || Number.isNaN(fim.getTime())) {
+      return res.status(400).json({ error: "Informe o início e o fim (data e hora)." });
+    }
+    if (fim <= inicio) return res.status(400).json({ error: "O fim tem que ser depois do início." });
+    if (fim - inicio > 31 * 24 * 3600e3) return res.status(400).json({ error: "Período muito longo (máximo 31 dias)." });
+    const periodo = {
+      id: randomUUID(),
+      inicio: inicio.toISOString(),
+      fim: fim.toISOString(),
+      usuarioId: req.usuario.id,
+      usuarioNome: req.usuario.nome,
+      observacao: String(req.body?.observacao || "").trim().slice(0, 200) || null,
+    };
+    const periodos = [...(rota.periodos || []), periodo].sort((a, b) => a.inicio.localeCompare(b.inicio));
+    await rota.update({ periodos });
+    res.status(201).json(await obterRoteiroCompleto(rota.id));
+  } catch (error) {
+    console.error("Erro ao adicionar período da rota:", error);
+    res.status(500).json({ error: "Erro ao salvar o período" });
+  }
+};
+
+// Tira um período: quem colocou ou a gestão
+export const removerPeriodoRota = async (req, res) => {
+  try {
+    const rota = await Roteiro.findByPk(req.params.id);
+    if (!rota) return res.status(404).json({ error: "Rota não encontrada" });
+    const periodo = (rota.periodos || []).find((p) => p.id === req.params.periodoId);
+    if (!periodo) return res.status(404).json({ error: "Período não encontrado" });
+    if (String(periodo.usuarioId) !== String(req.usuario.id) && !temAcao(req.usuario, "roteiros.verTodos")) {
+      return res.status(403).json({ error: "Só quem colocou o período pode tirar." });
+    }
+    await rota.update({ periodos: (rota.periodos || []).filter((p) => p.id !== periodo.id) });
+    res.json(await obterRoteiroCompleto(rota.id));
+  } catch (error) {
+    console.error("Erro ao remover período da rota:", error);
+    res.status(500).json({ error: "Erro ao tirar o período" });
   }
 };

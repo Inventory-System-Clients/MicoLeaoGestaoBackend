@@ -59,6 +59,50 @@ const STATUS_TAREFA = {
   CANCELADA: "Cancelada",
 };
 
+// Hora em Brasília (HH:MM)
+const horaBrasilia = (valor) => new Date(new Date(valor).getTime() - 3 * 60 * 60 * 1000).toISOString().slice(11, 16);
+const faixa = (de, ate) => {
+  const mesmoDia = diaBrasilia(de) === diaBrasilia(ate);
+  return mesmoDia ? `${horaBrasilia(de)}–${horaBrasilia(ate)}` : `${horaBrasilia(de)} até ${diaBrasilia(ate).split("-").reverse().join("/")} ${horaBrasilia(ate)}`;
+};
+const STATUS_ROTA = { AGENDADA: "Agendada", EM_ANDAMENTO: "Em andamento", FINALIZADA: "Finalizada" };
+
+// Eventos da rota no calendário: a rota (início → fim real ou previsto) e cada
+// período que alguém da rota disse que vai fazer; só os que caem no intervalo
+const eventosDaRota = (rota, inicio, fim) => {
+  const dentro = (de, ate) => diaBrasilia(de) <= fim && diaBrasilia(ate || de) >= inicio;
+  // Começou (antes ou depois do marcado): vale o começo real
+  const de = rota.status !== "AGENDADA" && rota.iniciadaEm ? rota.iniciadaEm : rota.dataInicio;
+  const ate = rota.dataFim || (rota.previsaoFim && new Date(rota.previsaoFim) > new Date(de) ? rota.previsaoFim : null);
+  const eventos = [];
+  if (dentro(de, ate)) {
+    eventos.push({
+      id: `rota-${rota.id}`,
+      categoria: "rota",
+      titulo: `${rota.nome} · ${ate ? faixa(de, ate) : horaBrasilia(de)}${!rota.dataFim && ate ? " (previsto)" : ""}`,
+      detalhe: [rota.funcionario?.nome, STATUS_ROTA[rota.status] || rota.status].filter(Boolean).join(" · ") || null,
+      data: diaBrasilia(de),
+      dataFim: ate && diaBrasilia(ate) !== diaBrasilia(de) ? diaBrasilia(ate) : null,
+      status: rota.status,
+      link: "/roteiros",
+    });
+  }
+  for (const periodo of rota.periodos || []) {
+    if (!dentro(periodo.inicio, periodo.fim)) continue;
+    eventos.push({
+      id: `rota-periodo-${periodo.id}`,
+      categoria: "rota",
+      titulo: `${rota.nome} · período ${faixa(periodo.inicio, periodo.fim)}`,
+      detalhe: [periodo.usuarioNome, periodo.observacao].filter(Boolean).join(" · ") || null,
+      data: diaBrasilia(periodo.inicio),
+      dataFim: diaBrasilia(periodo.fim) !== diaBrasilia(periodo.inicio) ? diaBrasilia(periodo.fim) : null,
+      status: rota.status,
+      link: "/roteiros",
+    });
+  }
+  return eventos;
+};
+
 const calendarioController = {
   async listar(req, res) {
     try {
@@ -66,7 +110,6 @@ const calendarioController = {
       await sincronizarTarefasAutomaticas();
       const hoje = hojeBrasilia();
       const entre = { [Op.between]: [inicio, fim] };
-      const entreHoras = { [Op.between]: [inicioDoDia(inicio), fimDoDia(fim)] };
 
       const [
         tarefas,
@@ -110,9 +153,20 @@ const calendarioController = {
             { model: Maquina, as: "maquina", attributes: ["id", "codigo"] },
           ],
         }),
+        // Rota: do início ao fim (real ou previsto) e os períodos que as
+        // pessoas disseram que vão fazer
         Roteiro.findAll({
-          where: { dataInicio: entreHoras },
-          attributes: ["id", "nome", "dataInicio", "status"],
+          where: {
+            ativo: true,
+            dataInicio: { [Op.ne]: null, [Op.lte]: fimDoDia(fim) },
+            [Op.or]: [
+              { dataInicio: { [Op.gte]: inicioDoDia(inicio) } },
+              { dataFim: { [Op.gte]: inicioDoDia(inicio) } },
+              { previsaoFim: { [Op.gte]: inicioDoDia(inicio) } },
+              { status: { [Op.ne]: "FINALIZADA" }, dataFim: null },
+            ],
+          },
+          attributes: ["id", "nome", "dataInicio", "iniciadaEm", "dataFim", "previsaoFim", "status", "periodos"],
           include: [{ model: Usuario, as: "funcionario", attributes: ["id", "nome"] }],
         }),
         ProjetoLoja.findAll({
@@ -220,15 +274,7 @@ const calendarioController = {
           atrasada: manutencao.prazo < hoje && manutencao.status !== "CONCLUIDA",
           link: "/manutencao",
         })),
-        ...rotas.map((rota) => ({
-          id: `rota-${rota.id}`,
-          categoria: "rota",
-          titulo: `Rota: ${rota.nome}`,
-          detalhe: rota.funcionario?.nome || null,
-          data: diaBrasilia(rota.dataInicio),
-          status: rota.status,
-          link: "/roteiros",
-        })),
+        ...rotas.flatMap((rota) => eventosDaRota(rota, inicio, fim)),
         ...projetos.map((projeto) => ({
           id: `projeto-${projeto.id}`,
           categoria: "projeto",

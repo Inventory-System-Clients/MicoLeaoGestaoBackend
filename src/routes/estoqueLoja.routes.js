@@ -6,6 +6,7 @@ import {
   deletarEstoqueLoja,
   alertasEstoqueLoja,
   criarOuAtualizarProdutoEstoque,
+  listarEstoqueMinhasLojas,
 } from "../controllers/estoqueLojaController.js";
 import { analisarEstoqueLoja } from "../controllers/estoqueAnaliseController.js";
 import { autenticar, autorizarRole, registrarLog } from "../middlewares/auth.js";
@@ -45,6 +46,8 @@ const podeAlterarEstoque = autorizarRole("ADMIN", "FUNCIONARIO_ESTOQUE", "FUNCIO
 // Caso contrário, Express pode confundir 'alertas' ou 'varios' com um produtoId
 
 // Rotas GET específicas primeiro
+// Estoque das lojas do próprio usuário (só consulta)
+router.get("/minhas", autenticar, listarEstoqueMinhasLojas);
 router.get("/:lojaId/alertas", autenticar, alertasEstoqueLoja);
 router.get("/:lojaId/analise", autenticar, analisarEstoqueLoja);
 router.get("/:lojaId", autenticar, listarEstoqueLoja);

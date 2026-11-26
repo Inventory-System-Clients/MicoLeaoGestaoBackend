@@ -606,6 +606,12 @@ export const CATALOGO = [
         ],
       },
       {
+        chave: "estoque.minhasLojas",
+        nome: "Ver o estoque das minhas lojas (as do cadastro do usuário, só consulta)",
+        rotas: ["GET /api/estoque-lojas/minhas"],
+        telas: ["/estoque-minhas-lojas"],
+      },
+      {
         chave: "estoque.tela",
         nome: "Ver tela de Estoque",
         telas: ["/estoque"],
@@ -1019,9 +1025,14 @@ export const CATALOGO = [
       },
       {
         chave: "roteiros.executar",
-        nome: "Fazer a rota: iniciar, marcar paradas entregues e finalizar (devolve o veículo)",
+        nome: "Fazer a rota: iniciar, cheguei/saí e feito em cada loja, devolver o carro, dizer os períodos e finalizar",
         rotas: [
           "PATCH /api/roteiros/itens/:id/concluir",
+          "PATCH /api/roteiros/itens/:id/chegada",
+          "PATCH /api/roteiros/itens/:id/saida",
+          "POST /api/roteiros/:id/devolver-veiculo",
+          "POST /api/roteiros/:id/periodos",
+          "DELETE /api/roteiros/:id/periodos/:periodoId",
           "PATCH /api/roteiros/itens/:id/maquinas/:maquinaId/concluir",
           "POST /api/roteiros/:id/iniciar",
           "POST /api/roteiros/:id/finalizar",
@@ -1037,10 +1048,10 @@ export const CATALOGO = [
       },
       {
         chave: "roteiros.criar",
-        nome: "Criar rota (motorista, veículo, início e paradas)",
+        nome: "Criar rota (motorista, veículo, início e paradas). Quem não vê todas só cria rota em que está",
         rotas: ["POST /api/roteiros", "GET /api/roteiros/opcoes"],
       },
-      { chave: "roteiros.editar", nome: "Editar rota", rotas: ["PUT /api/roteiros/:id"] },
+      { chave: "roteiros.editar", nome: "Editar rota (quem não vê todas: só as que criou ou em que está)", rotas: ["PUT /api/roteiros/:id"] },
       { chave: "roteiros.excluir", nome: "Excluir rota", rotas: ["DELETE /api/roteiros/:id"] },
       {
         chave: "roteiros.editarItens",

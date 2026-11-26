@@ -36,6 +36,25 @@ const Roteiro = sequelize.define(
       allowNull: true,
       field: "iniciada_em",
     },
+    // Fim previsto (quem cria informa; vai para o calendário)
+    previsaoFim: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      field: "previsao_fim",
+    },
+    // Períodos que as pessoas da rota dizem que vão fazer (calendário):
+    // [{ id, inicio, fim, usuarioId, usuarioNome, observacao }]
+    periodos: {
+      type: DataTypes.JSONB,
+      allowNull: false,
+      defaultValue: [],
+    },
+    // Carro devolvido antes de finalizar (a rota segue em andamento)
+    veiculoDevolvidoEm: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      field: "veiculo_devolvido_em",
+    },
     kmInicial: {
       type: DataTypes.INTEGER,
       allowNull: true,
