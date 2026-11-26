@@ -1,4 +1,5 @@
-import { Produto, ProdutoCustoHistorico, Usuario } from "../models/index.js";
+import { Op } from "sequelize";
+import { CategoriaProduto, Produto, ProdutoCustoHistorico, Usuario } from "../models/index.js";
 import { sequelize } from "../database/connection.js";
 import { gerarSkuProduto } from "../utils/skuProduto.js";
 import { registrarTrocaCustoProduto } from "../services/custoProdutoService.js";
@@ -244,22 +245,115 @@ export const deletarProduto = async (req, res) => {
   }
 };
 
-// Listar categorias únicas
+// Categorias usadas nos produtos que ainda não estão cadastradas entram no
+// cadastro (assim o cadastro sempre tem todas)
+const sincronizarCategorias = async () => {
+  const usadas = await Produto.findAll({
+    attributes: [[sequelize.fn("DISTINCT", sequelize.col("categoria")), "categoria"]],
+    where: { categoria: { [Op.ne]: null } },
+    raw: true,
+  });
+  const cadastradas = await CategoriaProduto.findAll({ attributes: ["nome"], raw: true });
+  const nomes = new Set(cadastradas.map((c) => c.nome.trim().toLowerCase()));
+  for (const { categoria } of usadas) {
+    const nome = String(categoria || "").trim();
+    if (nome && !nomes.has(nome.toLowerCase())) {
+      await CategoriaProduto.create({ nome: nome.slice(0, 50) }).catch(() => {});
+      nomes.add(nome.toLowerCase());
+    }
+  }
+};
+
+// Nomes das categorias (cadastradas + usadas), em ordem
 export const listarCategorias = async (req, res) => {
   try {
-    const categorias = await Produto.findAll({
-      attributes: [
-        [sequelize.fn("DISTINCT", sequelize.col("categoria")), "categoria"],
-      ],
-      where: {
-        categoria: { [sequelize.Op.ne]: null },
-      },
-      raw: true,
-    });
-
-    res.json(categorias.map((c) => c.categoria));
+    await sincronizarCategorias();
+    const categorias = await CategoriaProduto.findAll({ attributes: ["nome"], order: [["nome", "ASC"]], raw: true });
+    res.json(categorias.map((c) => c.nome));
   } catch (error) {
     console.error("Erro ao listar categorias:", error);
     res.status(500).json({ error: "Erro ao listar categorias" });
+  }
+};
+
+// ---------- Cadastro de categorias ----------
+const nomeDaCategoria = (valor) => String(valor || "").trim().replace(/\s+/g, " ").slice(0, 50);
+
+export const listarCadastroCategorias = async (req, res) => {
+  try {
+    await sincronizarCategorias();
+    const [categorias, contagem] = await Promise.all([
+      CategoriaProduto.findAll({ order: [["nome", "ASC"]] }),
+      Produto.findAll({
+        attributes: ["categoria", [sequelize.fn("COUNT", sequelize.col("id")), "total"]],
+        where: { categoria: { [Op.ne]: null } },
+        group: ["categoria"],
+        raw: true,
+      }),
+    ]);
+    const porNome = new Map(contagem.map((c) => [String(c.categoria).trim().toLowerCase(), Number(c.total)]));
+    res.json(categorias.map((c) => ({ id: c.id, nome: c.nome, produtos: porNome.get(c.nome.trim().toLowerCase()) || 0 })));
+  } catch (error) {
+    console.error("Erro ao listar categorias:", error);
+    res.status(500).json({ error: "Erro ao listar categorias" });
+  }
+};
+
+export const criarCategoria = async (req, res) => {
+  try {
+    const nome = nomeDaCategoria(req.body.nome);
+    if (nome.length < 2) return res.status(400).json({ error: "Escreva o nome da categoria." });
+    const existe = await CategoriaProduto.findOne({ where: sequelize.where(sequelize.fn("lower", sequelize.col("nome")), nome.toLowerCase()) });
+    if (existe) return res.status(400).json({ error: "Já existe uma categoria com esse nome." });
+    const categoria = await CategoriaProduto.create({ nome });
+    res.status(201).json(categoria);
+  } catch (error) {
+    console.error("Erro ao criar categoria:", error);
+    res.status(500).json({ error: "Erro ao criar categoria" });
+  }
+};
+
+// Renomear: os produtos dessa categoria passam para o nome novo
+export const renomearCategoria = async (req, res) => {
+  try {
+    const categoria = await CategoriaProduto.findByPk(req.params.id);
+    if (!categoria) return res.status(404).json({ error: "Categoria não encontrada" });
+    const nome = nomeDaCategoria(req.body.nome);
+    if (nome.length < 2) return res.status(400).json({ error: "Escreva o nome da categoria." });
+    const outra = await CategoriaProduto.findOne({
+      where: { [Op.and]: [sequelize.where(sequelize.fn("lower", sequelize.col("nome")), nome.toLowerCase()), { id: { [Op.ne]: categoria.id } }] },
+    });
+    if (outra) return res.status(400).json({ error: "Já existe uma categoria com esse nome." });
+    const antigo = categoria.nome;
+    await sequelize.transaction(async (transaction) => {
+      await categoria.update({ nome }, { transaction });
+      await Produto.update(
+        { categoria: nome },
+        { where: sequelize.where(sequelize.fn("lower", sequelize.fn("trim", sequelize.col("categoria"))), antigo.trim().toLowerCase()), transaction },
+      );
+    });
+    res.json(categoria);
+  } catch (error) {
+    console.error("Erro ao renomear categoria:", error);
+    res.status(500).json({ error: "Erro ao renomear categoria" });
+  }
+};
+
+// Excluir: só se nenhum produto usa
+export const excluirCategoria = async (req, res) => {
+  try {
+    const categoria = await CategoriaProduto.findByPk(req.params.id);
+    if (!categoria) return res.status(404).json({ error: "Categoria não encontrada" });
+    const usando = await Produto.count({
+      where: sequelize.where(sequelize.fn("lower", sequelize.fn("trim", sequelize.col("categoria"))), categoria.nome.trim().toLowerCase()),
+    });
+    if (usando) {
+      return res.status(400).json({ error: `${usando} produto(s) usam essa categoria. Troque a categoria deles antes de excluir.` });
+    }
+    await categoria.destroy();
+    res.json({ ok: true });
+  } catch (error) {
+    console.error("Erro ao excluir categoria:", error);
+    res.status(500).json({ error: "Erro ao excluir categoria" });
   }
 };

@@ -61,6 +61,8 @@ import ProjetoLojaMaquinaHistorico from "./ProjetoLojaMaquinaHistorico.js";
 import ProdutoCustoHistorico from "./ProdutoCustoHistorico.js";
 import CotacaoMoeda from "./CotacaoMoeda.js";
 import RegistroPonto from "./RegistroPonto.js";
+import PontoExtraDia from "./PontoExtraDia.js";
+import CategoriaProduto from "./CategoriaProduto.js";
 import LocalPonto from "./LocalPonto.js";
 import MetaLoja from "./MetaLoja.js";
 import ComissaoMeta from "./ComissaoMeta.js";
@@ -849,6 +851,8 @@ export {
   ProdutoCustoHistorico,
   CotacaoMoeda,
   RegistroPonto,
+  PontoExtraDia,
+  CategoriaProduto,
   LocalPonto,
   MetaLoja,
   ComissaoMeta,

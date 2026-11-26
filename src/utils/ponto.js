@@ -34,6 +34,110 @@ export const somarDias = (dia, quantidade) => {
 // 0 = domingo
 export const diaDaSemana = (dia) => new Date(`${dia}T12:00:00.000Z`).getUTCDay();
 
+// ---------- Escala, folga e feriado ----------
+// Escala do funcionário (cadastro do usuário): DIARIA (trabalha nos dias da
+// semana marcados) ou 12X36 (12h de trabalho, 36h de folga: dia sim, dia não
+// a partir do primeiro dia de trabalho)
+export const ESCALAS = ["DIARIA", "12X36"];
+export const DIAS_TRABALHO_PADRAO = [1, 2, 3, 4, 5, 6]; // segunda a sábado
+// Horas por mês para o valor da hora (salário ÷ horas): 220h na escala
+// diária (44h por semana) e 180h na 12x36
+export const HORAS_MES = { DIARIA: 220, "12X36": 180 };
+
+const diasEntre = (de, ate) =>
+  Math.round((new Date(`${ate}T12:00:00.000Z`) - new Date(`${de}T12:00:00.000Z`)) / (24 * UMA_HORA));
+
+export const ehDiaDeTrabalho = (config, dia) => {
+  if (config?.escala === "12X36") {
+    if (!config.escalaInicio) return true;
+    return ((diasEntre(config.escalaInicio, dia) % 2) + 2) % 2 === 0;
+  }
+  const dias =
+    Array.isArray(config?.diasTrabalho) && config.diasTrabalho.length ? config.diasTrabalho : DIAS_TRABALHO_PADRAO;
+  return dias.map(Number).includes(diaDaSemana(dia));
+};
+
+// Domingo de Páscoa (algoritmo de Meeus/Jones/Butcher)
+const pascoa = (ano) => {
+  const a = ano % 19;
+  const b = Math.floor(ano / 100);
+  const c = ano % 100;
+  const d = Math.floor(b / 4);
+  const e = b % 4;
+  const f = Math.floor((b + 8) / 25);
+  const g = Math.floor((b - f + 1) / 3);
+  const h = (19 * a + b - d - g + 15) % 30;
+  const i = Math.floor(c / 4);
+  const k = c % 4;
+  const l = (32 + 2 * e + 2 * i - h - k) % 7;
+  const m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const mes = Math.floor((h + l - 7 * m + 114) / 31);
+  const diaMes = ((h + l - 7 * m + 114) % 31) + 1;
+  return `${ano}-${String(mes).padStart(2, "0")}-${String(diaMes).padStart(2, "0")}`;
+};
+
+const FERIADOS_FIXOS = [
+  ["01-01", "Confraternização Universal"],
+  ["04-21", "Tiradentes"],
+  ["05-01", "Dia do Trabalho"],
+  ["09-07", "Independência"],
+  ["10-12", "Nossa Senhora Aparecida"],
+  ["11-02", "Finados"],
+  ["11-15", "Proclamação da República"],
+  ["11-20", "Consciência Negra"],
+  ["12-25", "Natal"],
+];
+
+// Feriados entre `inicio` e `fim`: nacionais + os marcados como feriado no
+// calendário (`locais`: [{ dataInicio, dataFim, titulo }]). Map dia -> nome
+export const feriadosEntre = (inicio, fim, locais = []) => {
+  const mapa = new Map();
+  for (let ano = Number(inicio.slice(0, 4)); ano <= Number(fim.slice(0, 4)); ano += 1) {
+    for (const [mesDia, nome] of FERIADOS_FIXOS) mapa.set(`${ano}-${mesDia}`, nome);
+    mapa.set(somarDias(pascoa(ano), -2), "Sexta-feira Santa");
+  }
+  for (const local of locais) {
+    for (let dia = local.dataInicio; dia <= local.dataFim; dia = somarDias(dia, 1)) {
+      mapa.set(dia, local.titulo || "Feriado");
+    }
+  }
+  for (const dia of [...mapa.keys()]) if (dia < inicio || dia > fim) mapa.delete(dia);
+  return mapa;
+};
+
+// TRABALHO, FOLGA ou FERIADO
+export const tipoDoDia = (config, dia, feriados = new Map()) =>
+  feriados.has(dia) ? "FERIADO" : ehDiaDeTrabalho(config, dia) ? "TRABALHO" : "FOLGA";
+
+// Dias da escala (também os futuros), para o calendário do funcionário
+export const diasDaEscala = ({ config, inicio, fim, feriados = new Map() }) => {
+  const dias = [];
+  for (let dia = inicio; dia <= fim; dia = somarDias(dia, 1)) {
+    const tipo = tipoDoDia(config, dia, feriados);
+    dias.push({ dia, tipo, feriadoNome: feriados.get(dia) || null, trabalhoPelaEscala: ehDiaDeTrabalho(config, dia) });
+  }
+  return dias;
+};
+
+// Valor da hora e das extras: hora = salário ÷ horas do mês; extra 50% nos
+// dias normais e 100% em domingo e feriado
+export const valorDaHora = (config) => {
+  const salario = Number(config?.salario || 0);
+  if (!(salario > 0)) return 0;
+  return salario / (HORAS_MES[config?.escala] || HORAS_MES.DIARIA);
+};
+export const valorDasExtras = (config, extra50Minutos, extra100Minutos) => {
+  const hora = valorDaHora(config);
+  return Number(((extra50Minutos / 60) * hora * 1.5 + (extra100Minutos / 60) * hora * 2).toFixed(2));
+};
+// Diária: a do cadastro, ou salário ÷ 30
+export const valorDaDiaria = (config) => {
+  const diaria = Number(config?.valorDiaria || 0);
+  if (diaria > 0) return diaria;
+  const salario = Number(config?.salario || 0);
+  return salario > 0 ? Number((salario / 30).toFixed(2)) : 0;
+};
+
 // Distância em metros entre dois pontos (fórmula de Haversine)
 export const distanciaEmMetros = (lat1, lon1, lat2, lon2) => {
   const raio = 6371000;
@@ -74,7 +178,18 @@ const minutosEntre = (inicio, fim) =>
 // Resumo de um dia de trabalho. `batidas`: as válidas do dia, em ordem.
 // `ultimaSaidaAnterior`: última saída do dia de trabalho anterior (pro aviso
 // de descanso entre jornadas).
-export const resumirDia = ({ dia, batidas, jornadaMinutos, ultimaSaidaAnterior, agora = new Date() }) => {
+// `tipoDia`: TRABALHO, FOLGA ou FERIADO. Folga e feriado não têm jornada:
+// tudo o que trabalhar é extra (sem débito).
+export const resumirDia = ({
+  dia,
+  batidas,
+  jornadaMinutos,
+  ultimaSaidaAnterior,
+  agora = new Date(),
+  tipoDia = "TRABALHO",
+  feriadoNome = null,
+}) => {
+  const jornadaDoDia = tipoDia === "TRABALHO" ? jornadaMinutos : 0;
   let trabalhado = 0;
   let intervalo = 0;
   let abertoDesde = null;
@@ -112,12 +227,23 @@ export const resumirDia = ({ dia, batidas, jornadaMinutos, ultimaSaidaAnterior, 
 
   let extra = 0;
   let debito = 0;
+  // Almoço não feito (dia com mais de 6h e intervalo menor que 1h) não conta
+  // como hora extra: esses minutos saem da extra
+  const faltaIntervalo = trabalhado > 6 * 60 ? Math.max(0, 60 - intervalo) : 0;
+  let intervaloDescontado = 0;
   const fechado = batidas.length > 0 && !emAndamento && !incompleto;
   if (fechado) {
-    const diferenca = trabalhado - jornadaMinutos;
-    if (diferenca > TOLERANCIA_DIARIA_MIN) extra = diferenca;
-    else if (diferenca < -TOLERANCIA_DIARIA_MIN) debito = -diferenca;
+    const diferenca = trabalhado - jornadaDoDia;
+    if (diferenca > TOLERANCIA_DIARIA_MIN) {
+      intervaloDescontado = Math.min(faltaIntervalo, diferenca);
+      extra = diferenca - intervaloDescontado;
+    } else if (diferenca < -TOLERANCIA_DIARIA_MIN && tipoDia === "TRABALHO") debito = -diferenca;
   }
+  // Extra 100% em domingo e feriado; 50% nos outros dias
+  const cemPorCento = tipoDia === "FERIADO" || diaDaSemana(dia) === 0;
+  // Em andamento: quanto já passou da jornada do dia (alerta)
+  const passouDaJornada =
+    emAndamento && trabalhadoAteAgora - jornadaDoDia > TOLERANCIA_DIARIA_MIN ? trabalhadoAteAgora - jornadaDoDia : 0;
 
   const avisos = [];
   if (incompleto) avisos.push("Batidas incompletas: falta marcar a saída ou alguma batida ficou fora de ordem");
@@ -129,6 +255,11 @@ export const resumirDia = ({ dia, batidas, jornadaMinutos, ultimaSaidaAnterior, 
     }
   }
   if (extra > 120) avisos.push("Mais de 2h extras no dia (limite da CLT)");
+  if (intervaloDescontado > 0) {
+    avisos.push(`${intervaloDescontado} min de almoço não feito não contam como hora extra`);
+  }
+  if (batidas.length && tipoDia === "FOLGA") avisos.push("Trabalhou na folga: todas as horas contam como extra");
+  if (batidas.length && tipoDia === "FERIADO") avisos.push(`Trabalhou no feriado${feriadoNome ? ` (${feriadoNome})` : ""}: extra 100%`);
   const primeiraEntrada = batidas.find((b) => b.tipo === "ENTRADA");
   if (primeiraEntrada && ultimaSaidaAnterior) {
     const descanso = minutosEntre(ultimaSaidaAnterior, primeiraEntrada.dataHora);
@@ -143,8 +274,14 @@ export const resumirDia = ({ dia, batidas, jornadaMinutos, ultimaSaidaAnterior, 
   return {
     dia,
     diaDaSemana: diaDaSemana(dia),
+    tipoDia,
+    feriadoNome,
     batidas,
-    jornadaMinutos,
+    jornadaMinutos: jornadaDoDia,
+    extra50Minutos: cemPorCento ? 0 : extra,
+    extra100Minutos: cemPorCento ? extra : 0,
+    intervaloDescontadoMinutos: intervaloDescontado,
+    passouDaJornadaMinutos: passouDaJornada,
     trabalhadoMinutos: emAndamento ? trabalhadoAteAgora : trabalhado,
     intervaloMinutos: intervalo,
     extraMinutos: extra,
@@ -164,7 +301,9 @@ export const resumirDia = ({ dia, batidas, jornadaMinutos, ultimaSaidaAnterior, 
 
 // Dias de `inicio` a `fim` (inclusive), com os totais do período.
 // `batidas`: válidas do usuário no período (e um pouco antes, pro descanso).
-export const montarEspelho = ({ inicio, fim, batidas, jornadaMinutos, agora = new Date() }) => {
+// `config`: escala do funcionário ({ escala, diasTrabalho, escalaInicio });
+// `feriados`: Map dia -> nome (feriadosEntre)
+export const montarEspelho = ({ inicio, fim, batidas, jornadaMinutos, agora = new Date(), config = null, feriados = new Map() }) => {
   const porDia = new Map();
   for (const batida of batidas) {
     if (!porDia.has(batida.dataReferencia)) porDia.set(batida.dataReferencia, []);
@@ -185,7 +324,15 @@ export const montarEspelho = ({ inicio, fim, batidas, jornadaMinutos, agora = ne
   const hoje = diaEmBrasilia(agora);
   for (let dia = inicio; dia <= fim && dia <= hoje; dia = somarDias(dia, 1)) {
     const lista = porDia.get(dia) || [];
-    const resumo = resumirDia({ dia, batidas: lista, jornadaMinutos, ultimaSaidaAnterior: ultimaSaida, agora });
+    const resumo = resumirDia({
+      dia,
+      batidas: lista,
+      jornadaMinutos,
+      ultimaSaidaAnterior: ultimaSaida,
+      agora,
+      tipoDia: tipoDoDia(config, dia, feriados),
+      feriadoNome: feriados.get(dia) || null,
+    });
     dias.push(resumo);
     const saida = [...lista].reverse().find((b) => b.tipo === "SAIDA");
     if (saida) ultimaSaida = saida.dataHora;
@@ -196,6 +343,8 @@ export const montarEspelho = ({ inicio, fim, batidas, jornadaMinutos, agora = ne
     (soma, dia) => ({
       trabalhadoMinutos: soma.trabalhadoMinutos + dia.trabalhadoMinutos,
       extraMinutos: soma.extraMinutos + dia.extraMinutos,
+      extra50Minutos: soma.extra50Minutos + dia.extra50Minutos,
+      extra100Minutos: soma.extra100Minutos + dia.extra100Minutos,
       debitoMinutos: soma.debitoMinutos + dia.debitoMinutos,
       diasTrabalhados: soma.diasTrabalhados + (dia.batidas.length ? 1 : 0),
       diasIncompletos: soma.diasIncompletos + (dia.situacao === "INCOMPLETO" ? 1 : 0),
@@ -206,6 +355,8 @@ export const montarEspelho = ({ inicio, fim, batidas, jornadaMinutos, agora = ne
     {
       trabalhadoMinutos: 0,
       extraMinutos: 0,
+      extra50Minutos: 0,
+      extra100Minutos: 0,
       debitoMinutos: 0,
       diasTrabalhados: 0,
       diasIncompletos: 0,

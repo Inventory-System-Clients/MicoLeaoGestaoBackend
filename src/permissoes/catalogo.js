@@ -267,6 +267,17 @@ export const CATALOGO = [
         telas: ["/produtos"],
       },
       {
+        chave: "produtos.categorias",
+        nome: "Cadastrar, renomear e excluir categorias de produto",
+        rotas: [
+          "GET /api/produtos/categorias/cadastro",
+          "POST /api/produtos/categorias",
+          "PUT /api/produtos/categorias/:id",
+          "DELETE /api/produtos/categorias/:id",
+        ],
+        requer: ["produtos.ver"],
+      },
+      {
         chave: "produtos.criar",
         nome: "Cadastrar produto",
         rotas: ["POST /api/produtos"],
@@ -1241,6 +1252,9 @@ export const CATALOGO = [
           "PUT /api/ponto/admin/locais/:id",
           "DELETE /api/ponto/admin/locais/:id",
           "PUT /api/ponto/admin/jornadas/:usuarioId",
+          "GET /api/ponto/admin/extras",
+          "POST /api/ponto/admin/extras/dia",
+          "GET /api/ponto/admin/alertas",
         ],
         telas: ["/controle-ponto"],
       },

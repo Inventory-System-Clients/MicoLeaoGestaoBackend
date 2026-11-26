@@ -65,6 +65,34 @@ const Usuario = sequelize.define(
       field: "jornada_diaria_minutos",
       comment: "Jornada do dia em minutos (ponto): passou disso, conta hora extra",
     },
+    // Ponto: escala (DIARIA: dias da semana em diasTrabalho; 12X36: dia sim,
+    // dia não a partir de escalaInicio), salário (valor da hora extra) e
+    // valor da diária (vazio = salário ÷ 30)
+    escala: {
+      type: DataTypes.STRING(10),
+      allowNull: false,
+      defaultValue: "DIARIA",
+    },
+    diasTrabalho: {
+      type: DataTypes.JSONB,
+      allowNull: false,
+      defaultValue: [1, 2, 3, 4, 5, 6],
+      field: "dias_trabalho",
+    },
+    escalaInicio: {
+      type: DataTypes.DATEONLY,
+      allowNull: true,
+      field: "escala_inicio",
+    },
+    salario: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: true,
+    },
+    valorDiaria: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: true,
+      field: "valor_diaria",
+    },
     // Chefe do setor (perfil): na manutenção mandada para o setor, escolhe
     // quem faz (ou faz ele mesmo)
     chefeSetor: {

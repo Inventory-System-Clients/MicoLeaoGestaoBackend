@@ -162,6 +162,25 @@ const startServer = async () => {
         });
         console.log("✅ Coluna jornada_diaria_minutos adicionada aos usuários!");
       }
+      // Ponto: escala, salário e diária
+      for (const [coluna, definicao] of [
+        ["escala", { type: DataTypes.STRING(10), allowNull: false, defaultValue: "DIARIA" }],
+        ["dias_trabalho", { type: DataTypes.JSONB, allowNull: false, defaultValue: [1, 2, 3, 4, 5, 6] }],
+        ["escala_inicio", { type: DataTypes.DATEONLY, allowNull: true }],
+        ["salario", { type: DataTypes.DECIMAL(10, 2), allowNull: true }],
+        ["valor_diaria", { type: DataTypes.DECIMAL(10, 2), allowNull: true }],
+      ]) {
+        if (!colunasUsuarios[coluna]) {
+          await queryInterface.addColumn("usuarios", coluna, definicao);
+          console.log(`✅ Coluna ${coluna} adicionada aos usuários!`);
+        }
+      }
+      // Período do calendário pode ser feriado (vale no ponto: extra 100%)
+      const colunasPeriodos = await queryInterface.describeTable("periodos_calendario").catch(() => null);
+      if (colunasPeriodos && !colunasPeriodos.feriado) {
+        await queryInterface.addColumn("periodos_calendario", "feriado", { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false });
+        console.log("✅ Coluna feriado adicionada aos períodos do calendário!");
+      }
       // Chefe do setor (manutenção)
       if (!colunasUsuarios.chefe_setor) {
         await queryInterface.addColumn("usuarios", "chefe_setor", {

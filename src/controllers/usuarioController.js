@@ -41,6 +41,48 @@ const salvarPermissoesLojas = async (usuarioId, lojaIds) => {
   );
 };
 
+// Ponto (cadastro do usuário): escala, dias de trabalho, início da 12x36,
+// jornada, salário e diária. Só grava o que vier no corpo.
+const lerCamposPonto = (body) => {
+  const dados = {};
+  const valorOuNulo = (valor) => {
+    if (valor === null || valor === "") return null;
+    const numero = Number(String(valor).replace(",", "."));
+    return Number.isFinite(numero) && numero >= 0 ? Number(numero.toFixed(2)) : undefined;
+  };
+  if (body.escala !== undefined) {
+    if (!["DIARIA", "12X36"].includes(body.escala)) return { erro: "Escala inválida (diária ou 12x36)." };
+    dados.escala = body.escala;
+  }
+  if (body.diasTrabalho !== undefined) {
+    const dias = [...new Set((Array.isArray(body.diasTrabalho) ? body.diasTrabalho : []).map(Number))].filter(
+      (d) => Number.isInteger(d) && d >= 0 && d <= 6,
+    );
+    if (!dias.length) return { erro: "Marque ao menos um dia de trabalho." };
+    dados.diasTrabalho = dias.sort();
+  }
+  if (body.escalaInicio !== undefined) {
+    if (body.escalaInicio && !/^\d{4}-\d{2}-\d{2}$/.test(body.escalaInicio)) return { erro: "Primeiro dia da escala inválido." };
+    dados.escalaInicio = body.escalaInicio || null;
+  }
+  if (body.escala === "12X36" && body.escalaInicio === "") {
+    return { erro: "Na escala 12x36, informe um dia de trabalho (o primeiro da escala)." };
+  }
+  if (body.jornadaDiariaMinutos !== undefined && body.jornadaDiariaMinutos !== null && body.jornadaDiariaMinutos !== "") {
+    const minutos = Math.round(Number(body.jornadaDiariaMinutos));
+    if (!(minutos >= 60 && minutos <= 720)) return { erro: "A jornada precisa ficar entre 1h e 12h por dia." };
+    dados.jornadaDiariaMinutos = minutos;
+  }
+  for (const campo of ["salario", "valorDiaria"]) {
+    if (body[campo] !== undefined) {
+      const valor = valorOuNulo(body[campo]);
+      if (valor === undefined) return { erro: campo === "salario" ? "Salário inválido." : "Valor da diária inválido." };
+      dados[campo] = valor;
+    }
+  }
+  return { dados };
+};
+
 // Listar todos os usuários (apenas ADMIN)
 export const listarUsuarios = async (req, res) => {
   try {
@@ -119,6 +161,8 @@ export const obterUsuario = async (req, res) => {
 export const criarUsuario = async (req, res) => {
   try {
     const { nome, email, senha, telefone, role, lojasPermitidas, chefeSetor } = req.body;
+    const camposPonto = lerCamposPonto(req.body);
+    if (camposPonto.erro) return res.status(400).json({ error: camposPonto.erro });
 
     if (!nome || !email || !senha) {
       return res
@@ -148,6 +192,7 @@ export const criarUsuario = async (req, res) => {
       telefone,
       role,
       chefeSetor: Boolean(chefeSetor),
+      ...camposPonto.dados,
     });
 
     const lojasParaPermitir = await obterLojasPermitidasPorRole(
@@ -191,6 +236,8 @@ export const atualizarUsuario = async (req, res) => {
 
     const { nome, email, senha, telefone, role, ativo, lojasPermitidas, chefeSetor } =
       req.body;
+    const camposPonto = lerCamposPonto(req.body);
+    if (camposPonto.erro) return res.status(400).json({ error: camposPonto.erro });
 
     // Verificar se novo email já existe em outro usuário
     if (email && email !== usuario.email) {
@@ -216,6 +263,7 @@ export const atualizarUsuario = async (req, res) => {
       role: role ?? usuario.role,
       ativo: ativo ?? usuario.ativo,
       chefeSetor: chefeSetor === undefined ? usuario.chefeSetor : Boolean(chefeSetor),
+      ...camposPonto.dados,
     });
 
     const roleFinal = role || usuario.role;

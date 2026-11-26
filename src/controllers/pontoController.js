@@ -1,5 +1,5 @@
 import { Op } from "sequelize";
-import { RegistroPonto, LocalPonto, Usuario, Loja } from "../models/index.js";
+import { RegistroPonto, LocalPonto, Usuario, Loja, PeriodoCalendario, PontoExtraDia } from "../models/index.js";
 import {
   TIPOS_PONTO,
   SEGUNDOS_ENTRE_BATIDAS,
@@ -10,6 +10,11 @@ import {
   localMaisProximo,
   proximasBatidas,
   montarEspelho,
+  feriadosEntre,
+  diasDaEscala,
+  valorDaHora,
+  valorDasExtras,
+  valorDaDiaria,
 } from "../utils/ponto.js";
 
 // Admin e Desenvolvedor não batem ponto
@@ -30,7 +35,26 @@ const numero = (valor) => {
   return Number.isFinite(convertido) ? convertido : null;
 };
 
-const ATRIBUTOS_USUARIO = ["id", "nome", "role", "jornadaDiariaMinutos"];
+const ATRIBUTOS_USUARIO = ["id", "nome", "role", "jornadaDiariaMinutos", "escala", "diasTrabalho", "escalaInicio", "salario", "valorDiaria"];
+
+// Escala do funcionário (cadastro do usuário)
+const configDe = (usuario) => ({
+  escala: usuario.escala || "DIARIA",
+  diasTrabalho: usuario.diasTrabalho,
+  escalaInicio: usuario.escalaInicio,
+  salario: usuario.salario,
+  valorDiaria: usuario.valorDiaria,
+});
+
+// Feriados do período: nacionais + os períodos do calendário marcados como feriado
+const carregarFeriados = async (inicio, fim) => {
+  const locais = await PeriodoCalendario.findAll({
+    where: { feriado: true, dataInicio: { [Op.lte]: fim }, dataFim: { [Op.gte]: inicio } },
+    attributes: ["titulo", "dataInicio", "dataFim"],
+    raw: true,
+  }).catch(() => []);
+  return feriadosEntre(inicio, fim, locais);
+};
 
 const incluirDetalhes = [
   { model: LocalPonto, as: "local", attributes: ["id", "nome", "raioMetros"] },
@@ -77,12 +101,14 @@ const batidasDoPeriodo = async (usuarioId, inicio, fim) =>
     })
   ).map(formatar);
 
-const espelhoDoUsuario = async (usuario, inicio, fim) =>
+const espelhoDoUsuario = async (usuario, inicio, fim, feriados = null) =>
   montarEspelho({
     inicio,
     fim,
     batidas: await batidasDoPeriodo(usuario.id, inicio, fim),
     jornadaMinutos: usuario.jornadaDiariaMinutos ?? 480,
+    config: configDe(usuario),
+    feriados: feriados || (await carregarFeriados(inicio, fim)),
   });
 
 const funcionariosComPonto = () =>
@@ -107,9 +133,33 @@ const pontoController = {
       // Jornada aberta desde ontem (virada da meia-noite) aparece como "hoje"
       const diaAtual =
         hoje.dias.find((dia) => dia.situacao === "EM_ANDAMENTO") || hoje.dias[0] || null;
+      // Calendário do mês (?mes=AAAA-MM): dias de trabalho, folga e feriado
+      const mes = /^\d{4}-\d{2}$/.test(req.query.mes || "") ? req.query.mes : diaEmBrasilia().slice(0, 7);
+      const inicioMes = `${mes}-01`;
+      const fimMes = somarDias(`${somarDias(inicioMes, 32).slice(0, 7)}-01`, -1);
+      const feriadosMes = await carregarFeriados(inicioMes, fimMes);
+      const espelhoMes = await espelhoDoUsuario(usuario, inicioMes, fimMes, feriadosMes);
+      const horasPorDia = new Map(espelhoMes.dias.map((d) => [d.dia, d]));
+      const calendario = diasDaEscala({ config: configDe(usuario), inicio: inicioMes, fim: fimMes, feriados: feriadosMes }).map(
+        (d) => {
+          const feito = horasPorDia.get(d.dia);
+          return {
+            ...d,
+            trabalhadoMinutos: feito?.trabalhadoMinutos || 0,
+            extraMinutos: feito?.extraMinutos || 0,
+            situacao: feito?.situacao || "SEM_REGISTRO",
+          };
+        },
+      );
 
       res.json({
-        usuario: { id: usuario.id, nome: usuario.nome, jornadaDiariaMinutos: usuario.jornadaDiariaMinutos },
+        usuario: {
+          id: usuario.id,
+          nome: usuario.nome,
+          jornadaDiariaMinutos: usuario.jornadaDiariaMinutos,
+          escala: usuario.escala || "DIARIA",
+        },
+        calendario: { mes, dias: calendario },
         semPonto: PERFIS_SEM_PONTO.includes(usuario.role),
         ultima: ultima ? formatar(ultima) : null,
         proximas: proximasBatidas(ultima),
@@ -218,6 +268,7 @@ const pontoController = {
       const hoje = diaEmBrasilia();
       const ontem = somarDias(hoje, -1);
       const funcionarios = await funcionariosComPonto();
+      const feriados = await carregarFeriados(ontem, hoje);
       const batidas = (
         await RegistroPonto.findAll({
           where: {
@@ -241,6 +292,8 @@ const pontoController = {
           fim: hoje,
           batidas: porUsuario.get(funcionario.id) || [],
           jornadaMinutos: funcionario.jornadaDiariaMinutos ?? 480,
+          config: configDe(funcionario),
+          feriados,
         });
         const dia =
           espelho.dias.find((d) => d.situacao === "EM_ANDAMENTO") ||
@@ -252,7 +305,10 @@ const pontoController = {
         } else if (dia?.batidas.length) {
           status = dia.situacao === "INCOMPLETO" ? "INCOMPLETO" : "ENCERROU";
         }
-        return { usuario: funcionario.toJSON(), status, dia, ultima };
+        const usuarioJson = funcionario.toJSON();
+        delete usuarioJson.salario;
+        delete usuarioJson.valorDiaria;
+        return { usuario: usuarioJson, status, dia, ultima };
       });
 
       res.json({ hoje, funcionarios: lista, locais: await locaisAtivos(), agora: new Date() });
@@ -306,6 +362,7 @@ const pontoController = {
     try {
       const { inicio, fim } = lerPeriodo(req.query);
       const funcionarios = await funcionariosComPonto();
+      const feriados = await carregarFeriados(inicio, fim);
       const batidas = (
         await RegistroPonto.findAll({
           where: {
@@ -327,6 +384,8 @@ const pontoController = {
           fim,
           batidas: porUsuario.get(funcionario.id) || [],
           jornadaMinutos: funcionario.jornadaDiariaMinutos ?? 480,
+          config: configDe(funcionario),
+          feriados,
         }).totais,
       }));
       res.json({ periodo: { inicio, fim }, funcionarios: linhas });
@@ -454,6 +513,174 @@ const pontoController = {
     } catch (error) {
       console.error("Erro ao desativar local de ponto:", error);
       res.status(500).json({ error: "Erro ao desativar o local" });
+    }
+  },
+
+  // Aba Extras: por funcionário, os dias com hora extra (50% / 100%) e o valor;
+  // o dia pode ser pago como diária no lugar da hora extra
+  async extras(req, res) {
+    try {
+      const { inicio, fim } = lerPeriodo(req.query);
+      const [funcionarios, feriados, decisoes] = await Promise.all([
+        funcionariosComPonto(),
+        carregarFeriados(inicio, fim),
+        PontoExtraDia.findAll({ where: { dia: { [Op.between]: [inicio, fim] } }, raw: true }),
+      ]);
+      const batidas = (
+        await RegistroPonto.findAll({
+          where: { desconsiderada: false, dataReferencia: { [Op.between]: [somarDias(inicio, -3), fim] } },
+          order: [["dataHora", "ASC"]],
+        })
+      ).map(formatar);
+      const porUsuario = new Map();
+      for (const batida of batidas) {
+        if (!porUsuario.has(batida.usuarioId)) porUsuario.set(batida.usuarioId, []);
+        porUsuario.get(batida.usuarioId).push(batida);
+      }
+      const decisaoDe = new Map(decisoes.map((d) => [`${d.usuarioId}:${d.dia}`, d]));
+
+      const linhas = funcionarios
+        .map((funcionario) => {
+          const config = configDe(funcionario);
+          const espelho = montarEspelho({
+            inicio,
+            fim,
+            batidas: porUsuario.get(funcionario.id) || [],
+            jornadaMinutos: funcionario.jornadaDiariaMinutos ?? 480,
+            config,
+            feriados,
+          });
+          const dias = espelho.dias
+            .filter((d) => d.extraMinutos > 0 || decisaoDe.has(`${funcionario.id}:${d.dia}`))
+            .map((d) => {
+              const decisao = decisaoDe.get(`${funcionario.id}:${d.dia}`);
+              const valorHoraExtra = valorDasExtras(config, d.extra50Minutos, d.extra100Minutos);
+              return {
+                dia: d.dia,
+                diaDaSemana: d.diaDaSemana,
+                tipoDia: d.tipoDia,
+                feriadoNome: d.feriadoNome,
+                trabalhadoMinutos: d.trabalhadoMinutos,
+                jornadaMinutos: d.jornadaMinutos,
+                extra50Minutos: d.extra50Minutos,
+                extra100Minutos: d.extra100Minutos,
+                intervaloDescontadoMinutos: d.intervaloDescontadoMinutos,
+                valorHoraExtra,
+                forma: decisao ? "DIARIA" : "HORA_EXTRA",
+                valorDiaria: decisao ? Number(decisao.valor) : valorDaDiaria(config),
+                observacao: decisao?.observacao || null,
+                valor: decisao ? Number(decisao.valor) : valorHoraExtra,
+              };
+            });
+          const total = (campo) => dias.reduce((soma, d) => soma + d[campo], 0);
+          return {
+            usuario: {
+              id: funcionario.id,
+              nome: funcionario.nome,
+              role: funcionario.role,
+              escala: config.escala,
+              salario: funcionario.salario === null ? null : Number(funcionario.salario),
+              valorHora: Number(valorDaHora(config).toFixed(2)),
+              valorDiaria: valorDaDiaria(config),
+            },
+            dias,
+            totais: {
+              extra50Minutos: total("extra50Minutos"),
+              extra100Minutos: total("extra100Minutos"),
+              diasComDiaria: dias.filter((d) => d.forma === "DIARIA").length,
+              valorHoraExtra: Number(dias.filter((d) => d.forma === "HORA_EXTRA").reduce((s, d) => s + d.valor, 0).toFixed(2)),
+              valorDiarias: Number(dias.filter((d) => d.forma === "DIARIA").reduce((s, d) => s + d.valor, 0).toFixed(2)),
+              valor: Number(total("valor").toFixed(2)),
+            },
+          };
+        })
+        .filter((linha) => linha.dias.length > 0);
+      res.json({ periodo: { inicio, fim }, funcionarios: linhas });
+    } catch (error) {
+      console.error("Erro ao montar extras do ponto:", error);
+      res.status(500).json({ error: "Erro ao montar as horas extras" });
+    }
+  },
+
+  // Dia pago como diária (forma DIARIA, com valor) ou de volta para hora extra
+  async salvarExtraDia(req, res) {
+    try {
+      const { usuarioId, dia, forma, observacao } = req.body;
+      if (!DIA_VALIDO.test(dia || "")) return res.status(400).json({ error: "Dia inválido." });
+      const usuario = await Usuario.findByPk(usuarioId, { attributes: ATRIBUTOS_USUARIO });
+      if (!usuario || PERFIS_SEM_PONTO.includes(usuario.role)) return res.status(404).json({ error: "Funcionário não encontrado" });
+      if (forma === "HORA_EXTRA") {
+        await PontoExtraDia.destroy({ where: { usuarioId, dia } });
+        return res.json({ ok: true, forma: "HORA_EXTRA" });
+      }
+      if (forma !== "DIARIA") return res.status(400).json({ error: "Escolha hora extra ou diária." });
+      const valor = req.body.valor === undefined || req.body.valor === "" ? valorDaDiaria(configDe(usuario)) : Number(String(req.body.valor).replace(",", "."));
+      if (!Number.isFinite(valor) || valor < 0) return res.status(400).json({ error: "Valor da diária inválido." });
+      const dados = {
+        usuarioId,
+        dia,
+        forma: "DIARIA",
+        valor: Number(valor.toFixed(2)),
+        observacao: observacao ? String(observacao).trim().slice(0, 255) : null,
+        criadoPorId: req.usuario.id,
+      };
+      const existente = await PontoExtraDia.findOne({ where: { usuarioId, dia } });
+      const registro = existente ? await existente.update(dados) : await PontoExtraDia.create(dados);
+      res.json(registro);
+    } catch (error) {
+      console.error("Erro ao salvar diária:", error);
+      res.status(500).json({ error: "Erro ao salvar" });
+    }
+  },
+
+  // Alertas: quem está trabalhando e já passou da jornada do dia (ou está
+  // trabalhando na folga/feriado)
+  async alertas(req, res) {
+    try {
+      const hoje = diaEmBrasilia();
+      const ontem = somarDias(hoje, -1);
+      const [funcionarios, feriados, batidas] = await Promise.all([
+        funcionariosComPonto(),
+        carregarFeriados(ontem, hoje),
+        RegistroPonto.findAll({
+          where: { desconsiderada: false, dataReferencia: { [Op.between]: [somarDias(hoje, -2), hoje] } },
+          order: [["dataHora", "ASC"]],
+        }).then((lista) => lista.map(formatar)),
+      ]);
+      const porUsuario = new Map();
+      for (const batida of batidas) {
+        if (!porUsuario.has(batida.usuarioId)) porUsuario.set(batida.usuarioId, []);
+        porUsuario.get(batida.usuarioId).push(batida);
+      }
+      const alertas = [];
+      for (const funcionario of funcionarios) {
+        const lista = porUsuario.get(funcionario.id);
+        if (!lista) continue;
+        const espelho = montarEspelho({
+          inicio: ontem,
+          fim: hoje,
+          batidas: lista,
+          jornadaMinutos: funcionario.jornadaDiariaMinutos ?? 480,
+          config: configDe(funcionario),
+          feriados,
+        });
+        const dia = espelho.dias.find((d) => d.situacao === "EM_ANDAMENTO");
+        if (!dia) continue;
+        if (dia.passouDaJornadaMinutos > 0) {
+          alertas.push({
+            usuario: { id: funcionario.id, nome: funcionario.nome },
+            tipo: dia.tipoDia === "TRABALHO" ? "PASSOU_DA_JORNADA" : "TRABALHANDO_NA_FOLGA",
+            minutos: dia.passouDaJornadaMinutos,
+            trabalhadoMinutos: dia.trabalhadoMinutos,
+            jornadaMinutos: dia.jornadaMinutos,
+            tipoDia: dia.tipoDia,
+          });
+        }
+      }
+      res.json({ alertas });
+    } catch (error) {
+      console.error("Erro ao carregar alertas do ponto:", error);
+      res.status(500).json({ error: "Erro ao carregar os alertas do ponto" });
     }
   },
 

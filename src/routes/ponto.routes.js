@@ -21,5 +21,9 @@ router.post("/admin/locais", ...admin, pontoController.salvarLocal);
 router.put("/admin/locais/:id", ...admin, pontoController.salvarLocal);
 router.delete("/admin/locais/:id", ...admin, pontoController.desativarLocal);
 router.put("/admin/jornadas/:usuarioId", ...admin, pontoController.salvarJornada);
+// Extras: hora extra (50%/100%) ou diária, por dia, e alerta de quem passou da jornada
+router.get("/admin/extras", ...admin, pontoController.extras);
+router.post("/admin/extras/dia", ...admin, pontoController.salvarExtraDia);
+router.get("/admin/alertas", ...admin, pontoController.alertas);
 
 export default router;

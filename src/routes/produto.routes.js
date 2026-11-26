@@ -6,6 +6,10 @@ import {
   atualizarProduto,
   deletarProduto,
   listarCategorias,
+  listarCadastroCategorias,
+  criarCategoria,
+  renomearCategoria,
+  excluirCategoria,
 } from "../controllers/produtoController.js";
 import {
   autenticar,
@@ -17,6 +21,11 @@ const router = express.Router();
 
 router.get("/", autenticar, listarProdutos);
 router.get("/categorias", autenticar, listarCategorias);
+// Cadastro de categorias (botão na tela de Produtos)
+router.get("/categorias/cadastro", autenticar, autorizarRole("ADMIN", "FUNCIONARIO_CADASTRO"), listarCadastroCategorias);
+router.post("/categorias", autenticar, autorizarRole("ADMIN", "FUNCIONARIO_CADASTRO"), criarCategoria);
+router.put("/categorias/:id", autenticar, autorizarRole("ADMIN", "FUNCIONARIO_CADASTRO"), renomearCategoria);
+router.delete("/categorias/:id", autenticar, autorizarRole("ADMIN", "FUNCIONARIO_CADASTRO"), excluirCategoria);
 router.get("/:id", autenticar, obterProduto);
 router.post(
   "/",

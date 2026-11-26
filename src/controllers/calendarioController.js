@@ -218,12 +218,14 @@ const calendarioController = {
         ...periodos.map((periodo) => ({
           id: `periodo-${periodo.id}`,
           categoria: "periodo",
-          titulo: periodo.titulo,
+          titulo: periodo.feriado ? `🎉 Feriado: ${periodo.titulo}` : periodo.titulo,
           detalhe: periodo.descricao,
           data: periodo.dataInicio,
           dataFim: periodo.dataFim,
           cor: periodo.cor,
           periodoId: periodo.id,
+          feriado: Boolean(periodo.feriado),
+          nomePeriodo: periodo.titulo,
         })),
         ...contas.map((conta) => ({
           id: `conta-${conta.id}`,
@@ -318,7 +320,7 @@ const calendarioController = {
 
   async salvarPeriodo(req, res) {
     try {
-      const { titulo, descricao, dataInicio, dataFim, cor } = req.body;
+      const { titulo, descricao, dataInicio, dataFim, cor, feriado } = req.body;
       const nome = String(titulo || "").trim();
       if (!nome) throw Object.assign(new Error("Dê um nome ao período (ex.: Natal)."), { status: 400 });
       if (!DATA_VALIDA.test(dataInicio || "") || !DATA_VALIDA.test(dataFim || "")) {
@@ -331,6 +333,7 @@ const calendarioController = {
         dataInicio,
         dataFim,
         cor: CORES_PERIODO.includes(cor) ? cor : "vermelho",
+        feriado: Boolean(feriado),
       };
 
       let periodo;

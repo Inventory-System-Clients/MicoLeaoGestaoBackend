@@ -34,6 +34,12 @@ const PeriodoCalendario = sequelize.define(
       allowNull: false,
       defaultValue: "vermelho",
     },
+    // Feriado (local): no ponto conta como feriado (extra 100%)
+    feriado: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
     criadoPorId: {
       type: DataTypes.UUID,
       allowNull: true,
