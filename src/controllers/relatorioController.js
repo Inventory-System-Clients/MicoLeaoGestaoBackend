@@ -224,8 +224,10 @@ export const dashboardRelatorio = async (req, res) => {
           ? registrosPreferidos
           : registrosDinheiro;
 
+      // Blink (registros desde 26/11/2026) é faturamento: conta junto com o dinheiro
       const dinheiroRegistro = baseRegistros.reduce(
-        (acc, registro) => acc + Number(registro.valorDinheiro || 0),
+        (acc, registro) =>
+          acc + Number(registro.valorDinheiro || 0) + (registro.blinkNoTotal ? Number(registro.valorBlink || 0) : 0),
         0,
       );
 
@@ -1228,6 +1230,14 @@ export const gerarRelatorioImpressaoPorLoja = async ({
   const obterMaquinaIdRegistro = (registro) =>
     registro?.maquinaId ?? registro?.maquinaid ?? null;
 
+  // Blink dos registros novos (blinkNoTotal) é faturamento: soma junto com o
+  // dinheiro. Nos antigos era só comparação e não conta.
+  const blinkQueConta = (registro) =>
+    registro?.blinkNoTotal === true || registro?.blink_no_total === true
+      ? obterNumeroRegistro(registro, "valorBlink", "valor_blink")
+      : 0;
+  let valorBlinkFaturamentoLoja = 0;
+
   registrosDinheiro.forEach((r) => {
     if (ehRegistroTotalLoja(r)) {
       const valorCartaoPixRegistro = obterNumeroRegistro(
@@ -1259,12 +1269,11 @@ export const gerarRelatorioImpressaoPorLoja = async ({
 
       valorTotalLoja +=
         obterNumeroRegistro(r, "valorDinheiro", "valor_dinheiro") +
-        valorCartaoPixRegistro;
-      valorDinheiroLoja += obterNumeroRegistro(
-        r,
-        "valorDinheiro",
-        "valor_dinheiro",
-      );
+        valorCartaoPixRegistro +
+        blinkQueConta(r);
+      valorDinheiroLoja +=
+        obterNumeroRegistro(r, "valorDinheiro", "valor_dinheiro") + blinkQueConta(r);
+      valorBlinkFaturamentoLoja += blinkQueConta(r);
       valorCartaoPixLoja += valorCartaoPixRegistro;
       taxaDeCartaoTotal += taxaRegistro;
       somaPercentualTaxaPonderado +=
@@ -1416,11 +1425,8 @@ export const gerarRelatorioImpressaoPorLoja = async ({
           ? valorCartaoPixLiquidoRegistro
           : Math.max(valorCartaoPixRegistro - taxaRegistro, 0);
 
-      valoresPorMaquina[maquinaIdRegistro].dinheiro += obterNumeroRegistro(
-        r,
-        "valorDinheiro",
-        "valor_dinheiro",
-      );
+      valoresPorMaquina[maquinaIdRegistro].dinheiro +=
+        obterNumeroRegistro(r, "valorDinheiro", "valor_dinheiro") + blinkQueConta(r);
       valoresPorMaquina[maquinaIdRegistro].cartaoPix += valorCartaoPixRegistro;
       valoresPorMaquina[maquinaIdRegistro].cartaoPixLiquido +=
         valorCartaoPixLiquidoNormalizado;
@@ -1498,6 +1504,7 @@ export const gerarRelatorioImpressaoPorLoja = async ({
           nome: mov.maquina.nome,
         },
         fichas: 0,
+        valorFichas: 0,
         totalSairam: 0,
         totalAbastecidas: 0,
         numMovimentacoes: 0,
@@ -1507,6 +1514,18 @@ export const gerarRelatorioImpressaoPorLoja = async ({
     }
 
     dadosPorMaquina[maquinaId].fichas += mov.fichas || 0;
+    // Valor das fichas pelo preço da máquina no dia da movimentação (gravado
+    // em valorFaturado, sem notas e pix). Sem valor gravado: valor padrão da loja
+    const valorFaturadoMov = Number(mov.valorFaturado || 0);
+    dadosPorMaquina[maquinaId].valorFichas +=
+      valorFaturadoMov > 0
+        ? Math.max(
+            valorFaturadoMov -
+              Number(mov.quantidade_notas_entrada || 0) -
+              Number(mov.valor_entrada_maquininha_pix || 0),
+            0,
+          )
+        : Number(mov.fichas || 0) * valorFichaPadraoLoja;
     dadosPorMaquina[maquinaId].totalSairam += ehRetiradaEstoque
       ? 0
       : mov.sairam || 0;
@@ -1602,13 +1621,10 @@ export const gerarRelatorioImpressaoPorLoja = async ({
       }))
       .sort((a, b) => b.quantidade - a.quantidade);
 
-    const valorFicha = m.maquina.valorFicha
-      ? Number(m.maquina.valorFicha)
-      : valorFichaPadraoLoja;
     const faturamentoMaquina =
       (valoresPorMaquina[m.maquina.id]?.dinheiro || 0) +
       (valoresPorMaquina[m.maquina.id]?.cartaoPixLiquido || 0) +
-      (m.fichas || 0) * valorFicha;
+      (m.valorFichas || 0);
     const lucroLiquido = faturamentoMaquina - custoProdutosSairam;
     const ticketPorPremio =
       Number(m.totalSairam || 0) > 0
@@ -1707,7 +1723,8 @@ export const gerarRelatorioImpressaoPorLoja = async ({
     valorMedioFicha = somaValorFicha / Object.values(dadosPorMaquina).length;
   }
 
-  const valorFichasReais = totalFichas * valorMedioFicha;
+  // Valor das fichas: preço de cada máquina no dia de cada movimentação
+  const valorFichasReais = Object.values(dadosPorMaquina).reduce((acc, m) => acc + (m.valorFichas || 0), 0);
   const valorTotal = valorTotalLojaBruto;
   const diferenca = valorFichasReais - valorTotal;
   let avisoFichas = null;
@@ -1759,6 +1776,8 @@ export const gerarRelatorioImpressaoPorLoja = async ({
       taxaDeCartao: taxaDeCartaoPeriodo,
       percentualTaxaCartaoMedia: percentualTaxaCartaoMediaPeriodo,
       valorBlinkTotal: Number(valorBlinkTotal.toFixed(2)),
+      // Blink que entrou no faturamento da loja (já está em valorDinheiroLoja)
+      valorBlinkFaturamentoLoja: Number(valorBlinkFaturamentoLoja.toFixed(2)),
       diferencaBlinkTotal: Number(diferencaBlinkTotal.toFixed(2)),
       divergenciasBlinkCount,
       alertasBlinkPendentesCount,

@@ -252,9 +252,51 @@ export const sincronizarTarefasAutomaticas = async ({ forcar = false } = {}) => 
   }
 };
 
+// "Mudar preço da máquina" agendado: no dia, o preço muda sozinho em todo o
+// sistema (não depende de alguém marcar Feito). Feito automático, em nome de
+// quem agendou.
+const INICIO_PRECO_AUTOMATICO = "2026-11-26";
+export const aplicarPrecosAgendados = async () => {
+  const tarefas = await Tarefa.findAll({
+    // Só as agendadas a partir de quando isso passou a valer: as antigas
+    // atrasadas continuam manuais (o preço pode já ter sido mudado na mão)
+    where: {
+      tipo: "PRECO_MAQUINA",
+      status: { [Op.in]: ["PENDENTE", "ACEITA"] },
+      data: { [Op.lte]: hojeBrasilia(), [Op.gte]: INICIO_PRECO_AUTOMATICO },
+    },
+    order: [["data", "ASC"]],
+  });
+  for (const tarefa of tarefas) {
+    const [travou] = await Tarefa.update({ status: "EXECUTANDO" }, { where: { id: tarefa.id, status: tarefa.status } });
+    if (!travou) continue;
+    try {
+      const resultado = await ACOES_TAREFA.PRECO_MAQUINA.executar(tarefa);
+      await tarefa.update({
+        status: "FEITA",
+        feitaEm: new Date(),
+        feitaPorId: tarefa.criadoPorId || null,
+        aceitaEm: tarefa.aceitaEm || new Date(),
+        resultado: { ...resultado, automatico: true },
+        historico: comHistorico(tarefa, registro(null, "FEITA", `Aplicado sozinho no dia · ${resultado?.mensagem || ""}`)),
+      });
+      console.log(`✅ Preço agendado aplicado: ${resultado?.mensagem}`);
+    } catch (error) {
+      await Tarefa.update({ status: tarefa.status }, { where: { id: tarefa.id } });
+      console.error("Erro ao aplicar preço agendado:", tarefa.id, error.message);
+    }
+  }
+};
+
 export const agendarTarefasAutomaticas = () => {
   sincronizarTarefasAutomaticas({ forcar: true });
   setInterval(() => sincronizarTarefasAutomaticas({ forcar: true }), 60 * 60 * 1000);
+  // Preços agendados: confere logo e a cada 5 minutos
+  aplicarPrecosAgendados().catch((erro) => console.error("Erro nos preços agendados:", erro.message));
+  setInterval(
+    () => aplicarPrecosAgendados().catch((erro) => console.error("Erro nos preços agendados:", erro.message)),
+    5 * 60 * 1000,
+  );
 };
 
 // ---------------------------------------------------------------------------

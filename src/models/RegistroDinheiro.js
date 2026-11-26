@@ -97,7 +97,14 @@ const RegistroDinheiro = sequelize.define(
       type: DataTypes.DECIMAL(10, 2),
       allowNull: true,
       comment:
-        "(Dinheiro+cartão/pix) - Blink, só para registro de total da loja. Blink é só comparação, não entra no valor contado.",
+        "Registros antigos: (Dinheiro+cartão/pix) - Blink (Blink era só comparação). Desde 26/11/2026 o Blink soma no total e isso fica null.",
+    },
+    // Desde 26/11/2026 o Blink é faturamento: soma no valor contado e nos
+    // relatórios. Registros antigos (false) tinham o Blink só como comparação.
+    blinkNoTotal: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
     },
     alertaBlinkResolvidoEm: {
       type: DataTypes.DATE,
@@ -126,7 +133,7 @@ const RegistroDinheiro = sequelize.define(
       type: DataTypes.INTEGER,
       allowNull: true,
       comment:
-        "Fichas do sistema - fichas do Blink, só para registro de total da loja",
+        "Fichas do sistema - fichas informadas (loja ou máquina)",
     },
     alertaFichasBlinkResolvidoEm: {
       type: DataTypes.DATE,

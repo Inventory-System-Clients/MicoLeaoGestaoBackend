@@ -54,7 +54,8 @@ async function getDashboardGraficos(req, res) {
       }
 
       const t = totaisPorLoja[id];
-      t.dinheiro += Number(reg.valorDinheiro || 0);
+      // Blink (registros desde 26/11/2026) é faturamento: conta com o dinheiro
+      t.dinheiro += Number(reg.valorDinheiro || 0) + (reg.blinkNoTotal ? Number(reg.valorBlink || 0) : 0);
       t.cartaoPix += Number(reg.valorCartaoPix || 0);
       t.cartaoPixLiquido += Number(reg.valorCartaoPixLiquido || 0);
       t.taxaDeCartao += Number(reg.taxaDeCartao || 0);

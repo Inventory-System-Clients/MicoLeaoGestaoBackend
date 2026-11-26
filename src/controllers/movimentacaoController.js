@@ -12,6 +12,13 @@ import { Op } from "sequelize";
 import { temAcao } from "../permissoes/acessos.js";
 import { limitesDe, inicioDosUltimosDias } from "../permissoes/limites.js";
 
+// Preço de uma ficha/jogada da máquina: máquina (categoria MAQUINA) usa o
+// valor da jogada; as outras, o valor da ficha (mesma regra do cadastro)
+export const precoDaMaquina = (maquina) =>
+  Number(
+    (maquina?.categoriaGeradora === "MAQUINA" ? maquina?.valorJogada : maquina?.valorFicha) || 0,
+  );
+
 const movimentacoesEmAndamento = new Set();
 
 // US08, US09, US10 - Registrar movimentação completa
@@ -147,9 +154,10 @@ export const registrarMovimentacao = async (req, res) => {
       }
     }
 
-    // Calcular valor faturado: fichas + notas + digital
+    // Calcular valor faturado: fichas + notas + digital. Preço da máquina no
+    // momento (fica gravado: mudar o preço depois não muda o que já foi)
     const valorFaturado =
-      (fichas ? fichas * parseFloat(maquina.valorFicha) : 0) +
+      (fichas ? fichas * precoDaMaquina(maquina) : 0) +
       (quantidade_notas_entrada ? parseFloat(quantidade_notas_entrada) : 0) +
       (valor_entrada_maquininha_pix
         ? parseFloat(valor_entrada_maquininha_pix)
@@ -732,7 +740,7 @@ export const atualizarMovimentacao = async (req, res) => {
     const lojaEstoqueId = await lojaDoEstoque(maquina?.lojaId);
     if (maquina) {
       updateData.valorFaturado =
-        Number(updateData.fichas || 0) * parseFloat(maquina.valorFicha || 0) +
+        Number(updateData.fichas || 0) * precoDaMaquina(maquina) +
         Number(updateData.quantidade_notas_entrada || 0) +
         Number(updateData.valor_entrada_maquininha_pix || 0);
     }

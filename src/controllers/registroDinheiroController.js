@@ -167,10 +167,17 @@ const calcularValorEsperadoSistema = async ({
   return Number(total || 0);
 };
 
-// Quantidade de fichas esperada pelo sistema para comparar com a leitura da
-// Blink: soma das fichas coletadas nas máquinas geradoras de receita da loja,
-// exceto as máquinas Cascata (não contabilizam fichas nessa comparação).
-const calcularQuantidadeFichasSistema = async ({ lojaId, inicio, fim }) => {
+// Quantidade de fichas esperada pelo sistema para comparar com as fichas
+// informadas: soma das fichas coletadas nas movimentações do período. Total da
+// loja: máquinas geradoras de receita da loja, exceto Cascata. Uma máquina:
+// só ela.
+const calcularQuantidadeFichasSistema = async ({ lojaId, maquinaId = null, inicio, fim }) => {
+  if (maquinaId) {
+    const total = await Movimentacao.sum("fichas", {
+      where: { maquinaId, dataColeta: { [Op.between]: [inicio, fim] } },
+    });
+    return Number(total || 0);
+  }
   const maquinas = await Maquina.findAll({
     where: { lojaId, geradoraReceita: true },
     attributes: ["id", "nome", "tipo"],
@@ -353,36 +360,28 @@ const registroDinheiroController = {
         fim: fimPeriodo,
       });
 
-      // Fichas esperadas pelo sistema (máquinas geradoras de receita, exceto
-      // Cascata) só fazem sentido pro fechamento de total da loja.
-      const quantidadeFichasSistema = ehRegistroTotalLoja
-        ? await calcularQuantidadeFichasSistema({
-            lojaId: loja,
-            inicio: inicioPeriodo,
-            fim: fimPeriodo,
-          })
-        : 0;
+      // Fichas do sistema no período: total da loja (geradoras, exceto
+      // Cascata) ou só a máquina do registro
+      const quantidadeFichasSistema = await calcularQuantidadeFichasSistema({
+        lojaId: loja,
+        maquinaId: ehRegistroTotalLoja ? null : maquina || null,
+        inicio: inicioPeriodo,
+        fim: fimPeriodo,
+      });
 
-      // Blink é só um valor de comparação (trocadora), não entra na soma
-      // contada contra o valor esperado pelo sistema (fichas).
-      const valorContadoTotal = valorDinheiroNumero + valorCartaoPixNumero;
+      // Desde 26/11/2026 o Blink é faturamento: soma no valor contado
+      const valorContadoTotal =
+        valorDinheiroNumero + valorCartaoPixNumero + (blinkFornecido ? valorBlinkNumero : 0);
       const diferenca = Number(
         (valorContadoTotal - valorEsperadoSistema).toFixed(2),
       );
 
-      // Divergência Blink: só faz sentido pro fechamento de total da loja,
-      // e só se o Blink foi de fato informado.
-      const diferencaBlink =
-        ehRegistroTotalLoja && blinkFornecido
-          ? Number((valorContadoTotal - valorBlinkNumero).toFixed(2))
-          : null;
+      // A comparação antiga (Dinheiro+Cartão x Blink) deixou de existir
+      const diferencaBlink = null;
 
-      // Divergência de fichas do Blink: sistema x leitura manual da Blink,
-      // só pro fechamento de total da loja e só se foi informada.
+      // Fichas informadas x sistema (loja ou máquina), se foram informadas
       const diferencaFichasBlink =
-        ehRegistroTotalLoja &&
-        fichasBlinkFornecido &&
-        quantidadeFichasBlinkNumero !== null
+        fichasBlinkFornecido && quantidadeFichasBlinkNumero !== null
           ? quantidadeFichasSistema - quantidadeFichasBlinkNumero
           : null;
 
@@ -402,10 +401,9 @@ const registroDinheiroController = {
         diferenca,
         diferencaBlink,
         quantidadeFichasBlink: quantidadeFichasBlinkNumero,
-        quantidadeFichasSistema: ehRegistroTotalLoja
-          ? quantidadeFichasSistema
-          : null,
+        quantidadeFichasSistema,
         diferencaFichasBlink,
+        blinkNoTotal: true,
         contadoPorId: req.usuario.id,
         conferidoPorId: conferidoPorId || null,
         comprovanteUrl: comprovanteUrl || null,
@@ -449,6 +447,7 @@ const registroDinheiroController = {
             "quantidadeFichasBlink",
             "quantidadeFichasSistema",
             "diferencaFichasBlink",
+            "blinkNoTotal",
             "contadoPorId",
             "conferidoPorId",
             "comprovanteUrl",
@@ -705,13 +704,12 @@ const registroDinheiroController = {
             inicio: inicioPeriodo,
             fim: fimPeriodo,
           }),
-          ehRegistroTotalLoja
-            ? calcularQuantidadeFichasSistema({
-                lojaId,
-                inicio: inicioPeriodo,
-                fim: fimPeriodo,
-              })
-            : Promise.resolve(null),
+          calcularQuantidadeFichasSistema({
+            lojaId,
+            maquinaId: ehRegistroTotalLoja ? null : maquinaId || null,
+            inicio: inicioPeriodo,
+            fim: fimPeriodo,
+          }),
         ]);
 
       return res.json({

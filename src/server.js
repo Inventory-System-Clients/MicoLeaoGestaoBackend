@@ -1049,6 +1049,15 @@ const startServer = async () => {
         ["diferencaBlink", { type: DataTypes.DECIMAL(10, 2), allowNull: true }],
         ["alertaBlinkResolvidoEm", { type: DataTypes.DATE, allowNull: true }],
         ["alertaBlinkResolvidoPorId", { type: DataTypes.UUID, allowNull: true }],
+        // Fichas do Blink x sistema (estavam só no modelo: sem elas o
+        // histórico de registros dava erro onde a coluna não existia)
+        ["quantidadeFichasBlink", { type: DataTypes.INTEGER, allowNull: true }],
+        ["quantidadeFichasSistema", { type: DataTypes.INTEGER, allowNull: true }],
+        ["diferencaFichasBlink", { type: DataTypes.INTEGER, allowNull: true }],
+        ["alertaFichasBlinkResolvidoEm", { type: DataTypes.DATE, allowNull: true }],
+        ["alertaFichasBlinkResolvidoPorId", { type: DataTypes.UUID, allowNull: true }],
+        // Blink soma no total (registros novos)
+        ["blinkNoTotal", { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false }],
       ];
 
       for (const [nomeColuna, definicao] of colunasNovasRegistroDinheiro) {
