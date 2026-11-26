@@ -26,11 +26,13 @@ const TAREFAS = ["tarefas.minhas"];
 // é de todos os perfis, menos Motorista e Financeiro; nas lojas marcadas no
 // cadastro ou em todas (lojas.todas)
 export const PADRAO_PERFIS_RESTRITOS = {
-  CONSULTOR_VENDAS: ["ponto.bater", "metas.minhas", "visitas.registrar", ...MANUTENCAO_BASICA, ...TAREFAS],
+  // Rotas: vê as que está e as que passam pelas lojas dela; faz as que está
+  CONSULTOR_VENDAS: ["ponto.bater", "metas.minhas", "visitas.registrar", "roteiros.ver", "roteiros.executar", ...MANUTENCAO_BASICA, ...TAREFAS],
   // Faz as rotas dele: inicia, entrega nas paradas e finaliza devolvendo o veículo
   MOTORISTA: ["ponto.bater", "metas.minhas", "roteiros.ver", "roteiros.executar", ...MANUTENCAO_BASICA, ...TAREFAS],
   // Mesmo trabalho do Consultor (ponto + movimentação nas lojas dele), sem metas
-  ABASTECEDOR: ["ponto.bater", "visitas.registrar", ...MANUTENCAO_BASICA, ...TAREFAS],
+  // Rotas: vê as que está e as que passam pelas lojas dele; faz as que está
+  ABASTECEDOR: ["ponto.bater", "visitas.registrar", "roteiros.ver", "roteiros.executar", ...MANUTENCAO_BASICA, ...TAREFAS],
   // Começa só com as metas por loja; os outros acessos vêm depois
   FINANCEIRO: ["ponto.bater", "metas.minhas", "metas.gerenciar", ...MANUTENCAO_BASICA, ...TAREFAS],
   // Cria e acompanha as rotas, vê os envios e acompanha as metas por loja.
@@ -43,6 +45,7 @@ export const PADRAO_PERFIS_RESTRITOS = {
     ...TAREFAS,
     "roteiros.ver",
     "roteiros.verTodos",
+    "roteiros.executar", // quando está na rota: inicia, entrega e finaliza
     "roteiros.criar",
     "roteiros.editar",
     "roteiros.excluir",

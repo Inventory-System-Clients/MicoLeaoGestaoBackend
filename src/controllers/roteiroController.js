@@ -2,8 +2,12 @@ import { Op } from "sequelize";
 import { sequelize } from "../database/connection.js";
 import {
   Envio,
+  ItemLacre,
   Lacre,
   Loja,
+  Produto,
+  RoteiroUsuario,
+  UsuarioLoja,
   Maquina,
   MovimentacaoVeiculo,
   Roteiro,
@@ -29,7 +33,28 @@ const includeRoteiro = [
     model: Envio,
     as: "envios",
     attributes: ["id", "lojaDestinoId", "despachadoEm", "observacao"],
-    include: [{ model: Lacre, as: "lacres", attributes: ["id", "numero", "status"] }],
+    include: [
+      {
+        model: Lacre,
+        as: "lacres",
+        attributes: ["id", "numero", "status"],
+        // Pelúcias de cada lacre (aparecem na parada da rota)
+        include: [
+          {
+            model: ItemLacre,
+            as: "itens",
+            attributes: ["id", "produtoId", "quantidade"],
+            include: [{ model: Produto, as: "produto", attributes: ["id", "nome", "codigo", "emoji"] }],
+          },
+        ],
+      },
+    ],
+  },
+  {
+    model: Usuario,
+    as: "pessoas",
+    attributes: ["id", "nome", "role"],
+    through: { attributes: [] },
   },
   {
     model: RoteiroItem,
@@ -55,9 +80,27 @@ const obterRoteiroCompleto = async (id) => {
   return roteiro ? ordenarItens(roteiro) : null;
 };
 
-const usuarioPodeAcessar = (req, roteiro) =>
-  temAcao(req.usuario, "roteiros.verTodos") ||
-  String(roteiro.usuarioId) === String(req.usuario.id);
+// Pessoa da rota (principal ou da lista) ou gestão: pode iniciar, conferir
+// paradas, finalizar e mexer nas paradas
+const ehPessoaDaRota = async (usuarioId, roteiro) =>
+  String(roteiro.usuarioId) === String(usuarioId) ||
+  (await RoteiroUsuario.count({ where: { roteiroId: roteiro.id, usuarioId } })) > 0;
+
+const usuarioPodeAcessar = async (req, roteiro) =>
+  temAcao(req.usuario, "roteiros.verTodos") || (await ehPessoaDaRota(req.usuario.id, roteiro));
+
+// Perfis que podem ser atribuídos a uma rota
+const PERFIS_DA_ROTA = ["MOTORISTA", "CONSULTOR_VENDAS", "GERENTE_VENDAS", "ABASTECEDOR"];
+
+const salvarPessoas = async (roteiroId, pessoasIds, transaction) => {
+  await RoteiroUsuario.destroy({ where: { roteiroId }, transaction });
+  if (pessoasIds.length) {
+    await RoteiroUsuario.bulkCreate(
+      pessoasIds.map((usuarioId) => ({ roteiroId, usuarioId })),
+      { transaction },
+    );
+  }
+};
 
 const normalizarDiasSemana = (todosDias, diasSemana) => {
   if (todosDias) return [];
@@ -176,7 +219,7 @@ export const agendarSincronizacaoDeRotas = () => {
 };
 
 // Motorista e veículo não podem estar em duas rotas abertas no mesmo dia
-const conflitoDeRota = async ({ id, usuarioId, veiculoId, dataInicio }) => {
+const conflitoDeRota = async ({ id, usuarioId, veiculoId, dataInicio, nomeMotorista }) => {
   if (!dataInicio) return null;
   const dia = new Date(new Date(dataInicio).getTime() - 3 * 3600e3).toISOString().slice(0, 10);
   const inicioDia = new Date(`${dia}T00:00:00-03:00`);
@@ -195,32 +238,56 @@ const conflitoDeRota = async ({ id, usuarioId, veiculoId, dataInicio }) => {
   const doVeiculo = veiculoId && abertas.find((r) => r.veiculoId === veiculoId);
   if (doVeiculo) return `O veículo já está na rota "${doVeiculo.nome}" nesse dia.`;
   const doMotorista = abertas.find((r) => r.usuarioId === usuarioId);
-  if (doMotorista) return `O motorista já tem a rota "${doMotorista.nome}" nesse dia.`;
+  if (doMotorista) return `${nomeMotorista || "O motorista"} já tem a rota "${doMotorista.nome}" nesse dia.`;
   return null;
 };
 
+// Pessoas: body.usuariosIds (várias; a 1ª é a principal) ou body.usuarioId
+// (uma, como antes). Sem mandar nenhum dos dois, mantém as da rota.
 const dadosDaRota = async (body, rotaAtual = null) => {
   const nome = String(body.nome ?? rotaAtual?.nome ?? "").trim();
-  const usuarioId = body.usuarioId ?? rotaAtual?.usuarioId;
+  let pessoasIds = Array.isArray(body.usuariosIds)
+    ? body.usuariosIds
+    : body.usuarioId
+      ? [body.usuarioId]
+      : null;
+  if (!pessoasIds && rotaAtual) {
+    const vinculos = await RoteiroUsuario.findAll({ where: { roteiroId: rotaAtual.id }, attributes: ["usuarioId"], order: [["created_at", "ASC"]] });
+    pessoasIds = vinculos.map((v) => v.usuarioId);
+    if (rotaAtual.usuarioId && !pessoasIds.includes(rotaAtual.usuarioId)) pessoasIds.unshift(rotaAtual.usuarioId);
+  }
+  pessoasIds = [...new Set((pessoasIds || []).filter(Boolean).map(String))];
   const veiculoId = body.veiculoId === "" ? null : body.veiculoId ?? rotaAtual?.veiculoId ?? null;
   const dataInicio = body.dataInicio !== undefined ? (body.dataInicio ? new Date(body.dataInicio) : null) : rotaAtual?.dataInicio;
   if (!nome) return { erro: "Dê um nome para a rota." };
-  if (!usuarioId) return { erro: "Escolha o motorista." };
+  if (!pessoasIds.length) return { erro: "Escolha quem vai fazer a rota." };
   if (!dataInicio || Number.isNaN(new Date(dataInicio).getTime())) return { erro: "Informe a data e a hora de início." };
-  const motorista = await Usuario.findByPk(usuarioId, { attributes: ["id", "role", "ativo"] });
-  if (!motorista || !motorista.ativo || motorista.role !== "MOTORISTA") return { erro: "Escolha um motorista ativo." };
+  const pessoas = await Usuario.findAll({ where: { id: pessoasIds }, attributes: ["id", "nome", "role", "ativo"] });
+  if (pessoas.length !== pessoasIds.length || pessoas.some((p) => !p.ativo || !PERFIS_DA_ROTA.includes(p.role))) {
+    return { erro: "Escolha pessoas ativas (motorista, consultora, gestora ou abastecedor)." };
+  }
   if (veiculoId && !(await Veiculo.findByPk(veiculoId))) return { erro: "Veículo inválido." };
-  const conflito = await conflitoDeRota({ id: rotaAtual?.id, usuarioId, veiculoId, dataInicio });
-  if (conflito) return { erro: conflito };
-  return { dados: { nome, usuarioId, veiculoId, dataInicio } };
+  // Conflito: veículo, e cada motorista da lista no mesmo dia
+  const motoristas = pessoas.filter((p) => p.role === "MOTORISTA");
+  for (const alvo of motoristas.length ? motoristas : [null]) {
+    const conflito = await conflitoDeRota({
+      id: rotaAtual?.id,
+      usuarioId: alvo?.id || null,
+      veiculoId,
+      dataInicio,
+      nomeMotorista: alvo?.nome,
+    });
+    if (conflito) return { erro: conflito };
+  }
+  return { dados: { nome, usuarioId: pessoasIds[0], veiculoId, dataInicio }, pessoasIds };
 };
 
 // Lojas, motoristas, veículos e envios sem rota, para montar a rota
 export const opcoesRota = async (req, res) => {
   try {
-    const [lojas, motoristas, veiculos, envios] = await Promise.all([
+    const [lojas, pessoas, veiculos, envios] = await Promise.all([
       Loja.findAll({ where: { ativo: true }, attributes: ["id", "nome", "cidade"], order: [["nome", "ASC"]] }),
-      Usuario.findAll({ where: { ativo: true, role: "MOTORISTA" }, attributes: ["id", "nome"], order: [["nome", "ASC"]] }),
+      Usuario.findAll({ where: { ativo: true, role: PERFIS_DA_ROTA }, attributes: ["id", "nome", "role"], order: [["nome", "ASC"]] }),
       Veiculo.findAll({ attributes: ["id", "nome", "modelo", "tipo", "emoji", "emUso", "parada", "km"], order: [["nome", "ASC"]] }),
       Envio.findAll({
         where: { roteiroId: null },
@@ -235,7 +302,8 @@ export const opcoesRota = async (req, res) => {
     ]);
     res.json({
       lojas: lojas.filter((l) => !["deposito principal", "depósito principal"].includes(String(l.nome).trim().toLowerCase())),
-      motoristas,
+      pessoas,
+      motoristas: pessoas.filter((p) => p.role === "MOTORISTA"),
       veiculos,
       // Só os que ainda não foram conferidos na loja
       envios: envios.filter((e) => (e.lacres || []).some((l) => ["SEPARADO", "EM_TRANSITO"].includes(l.status))),
@@ -252,7 +320,7 @@ export const iniciarRotaManual = async (req, res) => {
     const resultado = await sequelize.transaction(async (transaction) => {
       const rota = await Roteiro.findByPk(req.params.id, { transaction, lock: transaction.LOCK.UPDATE });
       if (!rota) return { status: 404, erro: "Rota não encontrada" };
-      if (!usuarioPodeAcessar(req, rota)) return { status: 403, erro: "Essa rota não é sua." };
+      if (!(await usuarioPodeAcessar(req, rota))) return { status: 403, erro: "Essa rota não é sua." };
       if (rota.status !== "AGENDADA") return { status: 409, erro: "Essa rota já começou." };
       await iniciarRota(rota, rota.usuarioId, false, transaction);
       return { id: rota.id };
@@ -271,7 +339,7 @@ export const finalizarRota = async (req, res) => {
     const resultado = await sequelize.transaction(async (transaction) => {
       const rota = await Roteiro.findByPk(req.params.id, { transaction, lock: transaction.LOCK.UPDATE });
       if (!rota) return { status: 404, erro: "Rota não encontrada" };
-      if (!usuarioPodeAcessar(req, rota)) return { status: 403, erro: "Essa rota não é sua." };
+      if (!(await usuarioPodeAcessar(req, rota))) return { status: 403, erro: "Essa rota não é sua." };
       if (rota.status === "FINALIZADA") return { status: 409, erro: "Essa rota já foi finalizada." };
       const agora = new Date();
       const dados = { status: "FINALIZADA", dataFim: agora, iniciadaEm: rota.iniciadaEm || agora };
@@ -322,11 +390,35 @@ export const listarRoteiros = async (req, res) => {
   try {
     await sincronizarRotas();
 
-    // Motorista vê as rotas dele (finalizadas só dos últimos 7 dias)
-    const where = temAcao(req.usuario, "roteiros.verTodos")
+    // Gestão vê todas. Os outros veem as rotas em que estão (fazem) e as que
+    // passam pelas lojas deles (só acompanham). Finalizadas: últimos 7 dias.
+    const verTodos = temAcao(req.usuario, "roteiros.verTodos");
+    let minhasIds = [];
+    let daLojaIds = [];
+    if (!verTodos) {
+      const [vinculos, lojasDoUsuario] = await Promise.all([
+        RoteiroUsuario.findAll({ where: { usuarioId: req.usuario.id }, attributes: ["roteiroId"] }),
+        UsuarioLoja.findAll({ where: { usuarioId: req.usuario.id }, attributes: ["lojaId"] }),
+      ]);
+      minhasIds = vinculos.map((v) => v.roteiroId);
+      const lojaIds = lojasDoUsuario.map((l) => l.lojaId);
+      if (lojaIds.length) {
+        const paradas = await RoteiroItem.findAll({ where: { lojaId: lojaIds }, attributes: ["roteiroId"] });
+        const enviosParaLojas = await Envio.findAll({ where: { lojaDestinoId: lojaIds, roteiroId: { [Op.ne]: null } }, attributes: ["roteiroId"] });
+        daLojaIds = [...paradas, ...enviosParaLojas].map((p) => p.roteiroId);
+      }
+    }
+    const where = verTodos
       ? {}
       : {
-          usuarioId: req.usuario.id,
+          [Op.and]: [
+            {
+              [Op.or]: [
+                { usuarioId: req.usuario.id },
+                { id: [...new Set([...minhasIds, ...daLojaIds])] },
+              ],
+            },
+          ],
           ativo: true,
           [Op.or]: [
             { status: { [Op.ne]: "FINALIZADA" } },
@@ -343,7 +435,17 @@ export const listarRoteiros = async (req, res) => {
       ],
     });
 
-    res.json(roteiros.map(ordenarItens));
+    const minhas = new Set(minhasIds.map(String));
+    res.json(
+      roteiros.map((roteiro) => ({
+        ...ordenarItens(roteiro),
+        // pode iniciar/conferir/finalizar (senão só acompanha)
+        souDaRota:
+          verTodos ||
+          String(roteiro.usuarioId) === String(req.usuario.id) ||
+          minhas.has(String(roteiro.id)),
+      })),
+    );
   } catch (error) {
     console.error("Erro ao listar roteiros:", error);
     res.status(500).json({ error: "Erro ao listar roteiros" });
@@ -380,7 +482,7 @@ const normalizarResetsAgendados = (body, roteiro = {}) => {
 
 export const criarRoteiro = async (req, res) => {
   try {
-    const { dados, erro } = await dadosDaRota(req.body);
+    const { dados, erro, pessoasIds } = await dadosDaRota(req.body);
     if (erro) return res.status(400).json({ error: erro });
     const roteiro = await Roteiro.create({
       ...dados,
@@ -389,6 +491,7 @@ export const criarRoteiro = async (req, res) => {
       todosDias: true,
       diasSemana: [],
     });
+    await salvarPessoas(roteiro.id, pessoasIds);
     // Paradas já na criação: [lojaId, ...] na ordem
     const paradas = Array.isArray(req.body.paradas) ? req.body.paradas.filter(Boolean) : [];
     if (paradas.length) {
@@ -409,13 +512,18 @@ export const atualizarRoteiro = async (req, res) => {
     const roteiro = await Roteiro.findByPk(req.params.id);
     if (!roteiro) return res.status(404).json({ error: "Rota não encontrada" });
     if (roteiro.status === "FINALIZADA") return res.status(400).json({ error: "Rota finalizada não pode ser editada." });
-    const { dados, erro } = await dadosDaRota(req.body, roteiro);
+    const { dados, erro, pessoasIds } = await dadosDaRota(req.body, roteiro);
     if (erro) return res.status(400).json({ error: erro });
     if (roteiro.status === "EM_ANDAMENTO") {
-      // Em andamento: só nome (motorista, veículo e início já valeram)
+      // Em andamento: nome e pessoas (a principal, o veículo e o início já valeram)
       await roteiro.update({ nome: dados.nome });
+      const comPrincipal = pessoasIds.includes(String(roteiro.usuarioId))
+        ? pessoasIds
+        : [String(roteiro.usuarioId), ...pessoasIds];
+      await salvarPessoas(roteiro.id, comPrincipal);
     } else {
       await roteiro.update({ ...dados, ativo: req.body.ativo ?? roteiro.ativo });
+      await salvarPessoas(roteiro.id, pessoasIds);
     }
     res.json(await obterRoteiroCompleto(roteiro.id));
   } catch (error) {
@@ -449,7 +557,7 @@ export const criarItemRoteiro = async (req, res) => {
     const roteiro = await Roteiro.findByPk(roteiroId);
 
     if (!roteiro) return res.status(404).json({ error: "Roteiro não encontrado" });
-    if (!usuarioPodeAcessar(req, roteiro)) {
+    if (!(await usuarioPodeAcessar(req, roteiro))) {
       return res.status(403).json({ error: "Acesso negado ao roteiro" });
     }
 
@@ -485,7 +593,8 @@ export const atualizarItemRoteiro = async (req, res) => {
 
     const roteirosIds = [item.roteiroId, req.body.roteiroId].filter(Boolean);
     const roteiros = await Roteiro.findAll({ where: { id: { [Op.in]: roteirosIds } } });
-    if (roteiros.some((roteiro) => !usuarioPodeAcessar(req, roteiro))) {
+    const acessos = await Promise.all(roteiros.map((roteiro) => usuarioPodeAcessar(req, roteiro)));
+    if (acessos.some((pode) => !pode)) {
       return res.status(403).json({ error: "Acesso negado ao roteiro" });
     }
 
@@ -511,7 +620,7 @@ export const excluirItemRoteiro = async (req, res) => {
 
     const roteiroId = item.roteiroId;
     const roteiro = await Roteiro.findByPk(roteiroId);
-    if (!usuarioPodeAcessar(req, roteiro)) {
+    if (!(await usuarioPodeAcessar(req, roteiro))) {
       return res.status(403).json({ error: "Acesso negado ao roteiro" });
     }
 
@@ -529,7 +638,7 @@ export const concluirItemRoteiro = async (req, res) => {
     if (!item) return res.status(404).json({ error: "Item não encontrado" });
 
     const roteiro = await Roteiro.findByPk(item.roteiroId);
-    if (!roteiro || !usuarioPodeAcessar(req, roteiro)) {
+    if (!roteiro || !(await usuarioPodeAcessar(req, roteiro))) {
       return res.status(403).json({ error: "Acesso negado ao roteiro" });
     }
 
@@ -553,7 +662,7 @@ export const concluirMaquinaRoteiro = async (req, res) => {
     if (!item) return res.status(404).json({ error: "Item não encontrado" });
 
     const roteiro = await Roteiro.findByPk(item.roteiroId);
-    if (!roteiro || !usuarioPodeAcessar(req, roteiro)) {
+    if (!roteiro || !(await usuarioPodeAcessar(req, roteiro))) {
       return res.status(403).json({ error: "Acesso negado ao roteiro" });
     }
 

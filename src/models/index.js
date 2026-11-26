@@ -69,6 +69,7 @@ import Tarefa from "./Tarefa.js";
 import PeriodoCalendario from "./PeriodoCalendario.js";
 import Shopping from "./Shopping.js";
 import Documento from "./Documento.js";
+import RoteiroUsuario from "./RoteiroUsuario.js";
 // MovimentaÃ§Ã£o de VeÃ­culo -> VeÃ­culo e UsuÃ¡rio
 MovimentacaoVeiculo.belongsTo(Veiculo, {
   as: "veiculo",
@@ -630,6 +631,9 @@ Envio.belongsTo(Transportador, {
   as: "transportador",
 });
 Roteiro.hasMany(Envio, { foreignKey: "roteiroId", as: "envios" });
+// Pessoas da rota (várias): motorista, consultora, gestora...
+Roteiro.belongsToMany(Usuario, { through: RoteiroUsuario, foreignKey: "roteiroId", otherKey: "usuarioId", as: "pessoas" });
+Roteiro.hasMany(RoteiroUsuario, { foreignKey: "roteiroId", as: "vinculosPessoas" });
 Envio.belongsTo(Roteiro, { foreignKey: "roteiroId", as: "roteiro" });
 Roteiro.belongsTo(Usuario, { foreignKey: "criadoPorId", as: "criadoPor" });
 Envio.belongsTo(Usuario, {
@@ -781,6 +785,7 @@ ProjetoLojaMaquinaHistorico.belongsTo(Usuario, {
 export {
   Shopping,
   Documento,
+  RoteiroUsuario,
   Usuario,
   Loja,
   Maquina,

@@ -170,6 +170,17 @@ const startServer = async () => {
         await queryInterface.addColumn("lojas", "shopping_id", { type: DataTypes.UUID, allowNull: true });
         console.log("✅ Coluna shopping_id adicionada em lojas!");
       }
+      // Rotas com várias pessoas: o motorista de cada rota antiga entra na lista
+      await sequelize.query(`
+        INSERT INTO roteiro_usuarios (id, roteiro_id, usuario_id, created_at, updated_at)
+        SELECT gen_random_uuid(), r.id, r.usuario_id, now(), now()
+        FROM roteiros r
+        WHERE r.usuario_id IS NOT NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM roteiro_usuarios ru WHERE ru.roteiro_id = r.id AND ru.usuario_id = r.usuario_id
+          )
+      `);
+
       const colunasProjetos = await queryInterface.describeTable("projetos_loja");
       if (!colunasProjetos.shopping_id) {
         await queryInterface.addColumn("projetos_loja", "shopping_id", { type: DataTypes.UUID, allowNull: true });
