@@ -165,7 +165,7 @@ const startServer = async () => {
       // Ponto: escala, salário e diária
       for (const [coluna, definicao] of [
         ["escala", { type: DataTypes.STRING(10), allowNull: false, defaultValue: "DIARIA" }],
-        ["dias_trabalho", { type: DataTypes.JSONB, allowNull: false, defaultValue: [1, 2, 3, 4, 5, 6] }],
+        ["dias_trabalho", { type: DataTypes.JSONB, allowNull: false, defaultValue: [0, 1, 2, 3, 4, 5, 6] }],
         ["escala_inicio", { type: DataTypes.DATEONLY, allowNull: true }],
         ["salario", { type: DataTypes.DECIMAL(10, 2), allowNull: true }],
         ["valor_diaria", { type: DataTypes.DECIMAL(10, 2), allowNull: true }],
@@ -174,6 +174,17 @@ const startServer = async () => {
           await queryInterface.addColumn("usuarios", coluna, definicao);
           console.log(`✅ Coluna ${coluna} adicionada aos usuários!`);
         }
+      }
+      // Padrão dos dias de trabalho passou de seg-sáb para todos os dias (domingo
+      // não é folga automática). Roda uma vez: enquanto o padrão antigo estiver na
+      // coluna, passa quem ainda está no padrão antigo para todos os dias
+      const [[padraoDias]] = await sequelize.query(
+        "SELECT column_default FROM information_schema.columns WHERE table_name = 'usuarios' AND column_name = 'dias_trabalho'",
+      );
+      if (String(padraoDias?.column_default || "").replace(/\s/g, "").startsWith("'[1,2,3,4,5,6]'")) {
+        await sequelize.query(`UPDATE usuarios SET dias_trabalho = '[0,1,2,3,4,5,6]'::jsonb WHERE dias_trabalho = '[1,2,3,4,5,6]'::jsonb`);
+        await sequelize.query(`ALTER TABLE usuarios ALTER COLUMN dias_trabalho SET DEFAULT '[0,1,2,3,4,5,6]'::jsonb`);
+        console.log("✅ Dias de trabalho padrão: todos os dias");
       }
       // Período do calendário pode ser feriado (vale no ponto: extra 100%)
       const colunasPeriodos = await queryInterface.describeTable("periodos_calendario").catch(() => null);

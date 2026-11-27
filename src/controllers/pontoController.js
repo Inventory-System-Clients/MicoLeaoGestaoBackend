@@ -669,7 +669,7 @@ const pontoController = {
         if (dia.passouDaJornadaMinutos > 0) {
           alertas.push({
             usuario: { id: funcionario.id, nome: funcionario.nome },
-            tipo: dia.tipoDia === "TRABALHO" ? "PASSOU_DA_JORNADA" : "TRABALHANDO_NA_FOLGA",
+            tipo: dia.diaDeTrabalho ? "PASSOU_DA_JORNADA" : "TRABALHANDO_NA_FOLGA",
             minutos: dia.passouDaJornadaMinutos,
             trabalhadoMinutos: dia.trabalhadoMinutos,
             jornadaMinutos: dia.jornadaMinutos,

@@ -76,7 +76,7 @@ const Usuario = sequelize.define(
     diasTrabalho: {
       type: DataTypes.JSONB,
       allowNull: false,
-      defaultValue: [1, 2, 3, 4, 5, 6],
+      defaultValue: [0, 1, 2, 3, 4, 5, 6],
       field: "dias_trabalho",
     },
     escalaInicio: {
